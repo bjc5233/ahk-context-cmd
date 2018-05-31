@@ -19,6 +19,11 @@
 ;  2.添加命令时判断是否重复
 ;  3.exec中加入execLang= 设定编程语言, 目前写死bat, 后续动态
 ;  4.inputBar命令提示 自动补全
+;  5.无法找到命令, tooltip提示
+;  5.增加菜单搜索命令
+;  6.label方式调用，导致global变量太多过于混乱，修改为函数调用
+;      注意:Gui, AddBranchItem:Add, Text, x+5 yp-3 w400 vAddBranchParent, %parentBranchName%
+;           vAddBranchParent必须为global类型
 ;========================= 环境配置 =========================
 #Persistent
 #NoEnv
@@ -47,9 +52,11 @@ gosub, GuiMenuTray
 
 ;========================= 配置热键 =========================
 global InputCmdMode :=
-#R::gosub, GuiInputCmdBar
-~Control::
-	(Count < 1 && A_TimeSincePriorHotkey > 60 && A_TimeSincePriorHotkey < 400 && A_PriorHotkey = A_ThisHotkey) ? Count ++ : (Count := 0)
+#R::
+    gosub, GuiInputCmdBar
+return
+~RControl::
+	(Count < 1 && A_TimeSincePriorHotkey > 80 && A_TimeSincePriorHotkey < 400 && A_PriorHotkey = A_ThisHotkey) ? Count ++ : (Count := 0)
 	if (Count > 0)
         gosub, GuiInputCmdBar
 return
@@ -69,11 +76,12 @@ return
 ;========================= 构建界面 =========================
 GuiMenuTray:
 	Menu, Tray, NoStandard
+    Menu, Tray, add, 修改菜单, GuiTV
 	Menu, Tray, add, 命令输入, GuiInputCmdBar
-	Menu, Tray, add, 修改菜单, GuiTV
 	Menu, Tray, add
 	Menu, Tray, add, 重启, MenuTrayReload
 	Menu, Tray, add, 退出, MenuTrayExit
+    Menu, Tray, Default, 修改菜单
 return
 
 GuiTV:
@@ -85,7 +93,6 @@ GuiTV:
     IL_Add(tvImageList, "shell32.dll", 135)
     Gui, JsonTreeView:Destroy
     Gui, JsonTreeView:New
-    Gui, JsonTreeView:+Resize
     Gui, JsonTreeView:Font,, Microsoft YaHei
     Gui, JsonTreeView:Add, TreeView, vJsonTreeView w450 r30 Readonly AltSubmit Checked HScroll hwndHTV gTVClick ImageList%tvImageList%
     GuiControl, JsonTreeView:-Redraw, JsonTreeView
