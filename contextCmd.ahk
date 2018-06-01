@@ -24,6 +24,7 @@
 ;  6.label方式调用，导致global变量太多过于混乱，修改为函数调用
 ;      注意:Gui, AddBranchItem:Add, Text, x+5 yp-3 w400 vAddBranchParent, %parentBranchName%
 ;           vAddBranchParent必须为global类型
+;   7.inputCmdBar窗口大小目前写死, 使用变量定制
 ;========================= 环境配置 =========================
 #Persistent
 #NoEnv
@@ -44,14 +45,16 @@ global jsonCmdTreeKV := Object()
 global execLangPathBase := A_ScriptDir "\cache"
 IfNotExist, %execLangPathBase%
     FileCreateDir, %execLangPathBase%
-ReadJsonConf()
+LoadJsonConf()
 gosub, GuiMenuTray
 ;========================= 环境配置 =========================
 
 
 
 ;========================= 配置热键 =========================
+global InputCmd :=
 global InputCmdMode :=
+global InputCmdLastValue :=
 #R::
     gosub, GuiInputCmdBar
 return
@@ -270,6 +273,7 @@ TVSave:
         jsonTreeStr := JSON.Dump(jsonTree)
         FileDelete, %jsonFilePath%
         FileAppend, %jsonTreeStr%, %jsonFilePath%
+        LoadJsonConf()
         MsgBox, 保存成功
         jsonTreeModifyFlag := false
     } else {
@@ -416,35 +420,48 @@ GuiInputCmdBar:
     if (InputCmdBarExist) {
         Gui, InputCmdBar:Submit, NoHide
         InputCmdLastValue := InputCmd
-        Gui, InputCmdBar:Destroy
+        Gui, InputCmdBar:Hide
         InputCmdBarExist := false
         return
     }
+    InputCmdMode := "inputBar"
     global InputCmdBarHwnd := "inputCmdBar"
     global InputCmdBarExist := true
     OnMessage(0x0201, "WM_LBUTTONDOWN")
-    Gui, InputCmdBar:New, +LastFound -Caption +Border +hWnd%InputCmdBarHwnd%
-    Gui, InputCmdBar:Margin, 30, 30
+    Gui, InputCmdBar:New, +LastFound -Caption -Border +hWnd%InputCmdBarHwnd%
+    Gui, InputCmdBar:Margin, 5, 5
     Gui, InputCmdBar:Color, 000000, 000000
     WinSet, TransColor, 000000, InputCmdBar
-    Gui, InputCmdBar:Font, s19, Microsoft YaHei
-    Gui, InputCmdBar:Add, Edit, w450 cFFFFFF vInputCmd, %InputCmdLastValue%
-    Gui, InputCmdBar:Add, Button, Default vButton Hidden gInputCmdBarSubmit, 确定(&Y)
+    Gui, InputCmdBar:Font, s15, Microsoft YaHei
+    Gui, InputCmdBar:Add, Edit, w400 h38 cFFFFFF vInputCmd gInputCmdEditHandler, %InputCmdLastValue%
+    Gui, InputCmdBar:Add, ListView, AltSubmit -Hdr Background000000 cwhite w400 r7 vInputCmdLV gInputCmdLVHandler, cmd|name
+    Gui, InputCmdBar:Add, Button, Default w0 h0 hide vButton gInputCmdSubmit
     guiX := 10
-    guiY := A_ScreenHeight - 200
-    Gui, InputCmdBar:Show, AutoSize x%guiX% y%guiY%
+    guiY := A_ScreenHeight - 500
+    Gui, InputCmdBar:Show, w410 h48 x%guiX% y%guiY%
     Gui, InputCmd:Color, ,Black
+    LV_ModifyCol(1, 180)
+    LV_ModifyCol(2, 200)
+    GuiControl, InputCmdBar:Hide, InputCmdLV
     EnableBlur(InputCmdBarHwnd)
 return
-InputCmdBarSubmit:
+
+InputCmdSubmit(CtrlHwnd, GuiEvent, EventInfo) {
     Gui, InputCmdBar:Submit, NoHide
     if (!InputCmd)
         return
-    Gui, InputCmdBar:Destroy
-    global InputCmdLastValue := InputCmd
-    InputCmdMode := "inputBar"
+    GuiControlGet, focusedControl, FocusV
+    if (focusedControl == "InputCmd") {
+    } else if (focusedControl == "InputCmdLV") {
+        rowNum := LV_GetNext(0, "Focused")
+        if (!rowNum)
+            return
+        LV_GetText(InputCmd, rowNum, 1)
+    }
+    Gui, InputCmdBar:Hide
+    InputCmdLastValue := InputCmd
     InputCmdExec(InputCmd)
-return
+}
 InputCmdBarGuiEscape:
     Gui, InputCmdBar:Submit, NoHide
     if (InputCmd)
@@ -452,6 +469,70 @@ InputCmdBarGuiEscape:
     Gui, InputCmdBar:Destroy
     InputCmdBarExist := false
 return
+
+InputCmdEditHandler(CtrlHwnd, GuiEvent, EventInfo) {
+    ;目前只处理g get do q的命令
+    Gui, InputCmdBar:Submit, NoHide
+    Gui, InputCmdBar:Show, h48
+    GuiControl, InputCmdBar:Hide, InputCmdLV
+    LV_Delete()
+    InputCmd :=  LTrim(InputCmd)
+    inputCmdSpacePos := InStr(InputCmd, " ", false)
+    if (!inputCmdSpacePos)
+        return
+    inputCmdKey := SubStr(InputCmd, 1, inputCmdSpacePos-1)
+    if (inputCmdKey not in g,get,do,q)
+        return
+    topChildCmds := jsonCmdTree[inputCmdKey]
+    if (!topChildCmds)
+        return
+    inputCmdValue := LTrim(SubStr(InputCmd, inputCmdSpacePos))
+    if (!inputCmdValue)
+        return
+    
+    
+    for cmdKey, branchId in topChildCmds {
+        if (RegExMatch(cmdKey, "i)^" inputCmdValue)) {
+            branch := jsonCmdTreeKV[branchId]
+            LV_Add(, inputCmdKey " " cmdKey, branch.name)
+        }
+            
+    }
+    Gui, InputCmdBar:Show, h260
+    GuiControl, InputCmdBar:Show, InputCmdLV
+}
+InputCmdLVHandler(CtrlHwnd, GuiEvent, EventInfo) {
+	if (GuiEvent == "K") {
+        if (EventInfo = 32) { ;空格选择执行该命令
+            InputCmdSubmit(CtrlHwnd, GuiEvent, EventInfo)
+        }
+	} else if (GuiEvent == "DoubleClick") {
+        InputCmdSubmit(CtrlHwnd, GuiEvent, EventInfo)
+	}
+}
+
+#If WinActive(A_ScriptName) and WinActive("ahk_class AutoHotkeyGUI")
+    ~Up::
+        Gui, InputCmdBar:Default
+        GuiControlGet, focusedControl, FocusV
+        if (focusedControl != "InputCmdLV")
+            return
+        rowNum := LV_GetNext(0, "Focused")
+        if (rowNum == 1) {
+            LV_Modify(1, "-Focus -Select")
+            GuiControl, Focus, InputCmd
+        }
+    return
+    ~Down::
+        Gui, InputCmdBar:Default
+        GuiControlGet, focusedControl, FocusV
+        if (focusedControl != "InputCmd")
+            return
+        if (LV_GetCount()) {
+            GuiControl, InputCmdBar:Focus, InputCmdLV
+        }
+    return
+#If
 ;========================= 输入Bar =========================
 
 
@@ -482,7 +563,7 @@ return
 
 
 ;========================= 公共函数 =========================
-ReadJsonConf() {
+LoadJsonConf() {
     FileEncoding, UTF-8
     global jsonFilePath := A_ScriptDir "\contextCmd.json"
     jsonFile := FileOpen(jsonFilePath, "r")
@@ -497,17 +578,17 @@ ReadJsonConf() {
     jsonFile.Close()
     for index, topChild in jsonTree.children {
         topChildCmds := Object()
-        ReadJsonConfLoop(topChildCmds, topChild.children)
+        LoadJsonConfLoop(topChildCmds, topChild.children)
         jsonCmdTree[topChild.name] := topChildCmds
     }
 }
-ReadJsonConfLoop(childCmds, branchs) {
+LoadJsonConfLoop(childCmds, branchs) {
     for index, branch in branchs {
         branchId := branch.branchId
         if (branch.cmd)
             childCmds[branch.cmd] := branchId
         if (branch.children)
-            readJsonConfLoop(childCmds, branch.children)
+            LoadJsonConfLoop(childCmds, branch.children)
         jsonCmdTreeKV[branchId] := branch
     }
 }
