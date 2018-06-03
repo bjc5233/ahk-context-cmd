@@ -15,21 +15,18 @@
 ;       ::execLang=bat
 ;     会将此文本框文本保存到bat文件, 并执行该bat
 ;TODO
-;  1.`和对应的全角·输入效果一致，目前未找到解决方法
-;  2.添加命令时判断是否重复
-;  3.exec中加入execLang= 设定编程语言, 目前写死bat, 后续动态
-;  4.inputBar命令提示 自动补全
-;  5.无法找到命令, tooltip提示
-;  5.增加菜单搜索命令
-;  6.label方式调用，导致global变量太多过于混乱，修改为函数调用
+;  1.添加命令时判断是否重复
+;  2.exec中加入execLang= 设定编程语言, 目前写死bat, 后续动态
+;  3.增加菜单搜索命令
+;  3.增加菜单判断命令是否已经存在
+;  4.label方式调用，导致global变量太多过于混乱，修改为函数调用
 ;      注意:Gui, AddBranchItem:Add, Text, x+5 yp-3 w400 vAddBranchParent, %parentBranchName%
 ;           vAddBranchParent必须为global类型
-;   7.inputCmdBar窗口大小目前写死, 使用变量定制
+;   5.inputCmdBar窗口大小目前写死, 使用变量定制
 ;========================= 环境配置 =========================
 #Persistent
 #NoEnv
-#HotkeyInterval 1000
-#SingleInstance,Force
+#SingleInstance, Force
 SetBatchLines, -1
 SetKeyDelay, -1
 StringCaseSense, off
@@ -38,14 +35,19 @@ CoordMode, Menu
 #Include <PRINT>
 #Include <CuteWord>
 
+global rootBranchId :=
 global jsonTree := Object()
 global jsonTreeKV := Object()
+;global jsonTreeKV2 := Object()  ;<g, <cmd, branchId>>
+
 global jsonCmdTree := Object()
 global jsonCmdTreeKV := Object()
+global jsonCmdPath := Object()
 global execLangPathBase := A_ScriptDir "\cache"
 IfNotExist, %execLangPathBase%
     FileCreateDir, %execLangPathBase%
 LoadJsonConf()
+LoadCmdPathConf()
 gosub, GuiMenuTray
 ;========================= 环境配置 =========================
 
@@ -171,13 +173,33 @@ TVAddSave:
     if (!AddBranchName) {
         MsgBox, 必须填写[名称]
         return
-    }    
-    Gui, AddBranchItem:Destroy
+    }
+    
     Gui, JsonTreeView:Default
-    if (AddBranchCmd)
+    if (AddBranchCmd) {
+        ;检查命令重复性
+        ;注意jsonCmdTree中的branchId(文件中读取的)与jsonTreeKV中的branchId(每次新创建)是不一致的
+        ;topChildBranchId := GetTopChildBranchId(parentBranchId)
+        ;if (!topChildBranchId)
+        ;    return
+        ;topChildBranch := jsonTreeKV[topChildBranchId]
+        ;if (!topChildBranch)
+        ;    return
+        ;
+        ;topChildCmds := jsonCmdTree[topChildBranch.name]
+        ;for cmdKey, branchId in topChildCmds {
+        ;    if (cmdKey == AddBranchCmd) {
+        ;        cmd := jsonTreeKV[branchId]
+        ;        MsgBox, % "该命令[" cmdKey "]已存在, 其名称为[" cmd.name "]!"
+        ;        return
+        ;    }
+        ;}
         newBranchId := TV_Add(AddBranchName " - " AddBranchCmd, parentBranchId, "Icon1 " addBranchIndex)
-    else
+    } else {
         newBranchId := TV_Add(AddBranchName, parentBranchId, "Bold Icon2 " addBranchIndex)
+    }
+    
+    Gui, AddBranchItem:Destroy
     TV_Modify(parentBranchId, "Expand")
     newBranch := Object("branchId", newBranchId, "name", AddBranchName)
     if (AddBranchCmd)
@@ -432,24 +454,22 @@ GuiInputCmdBar:
     Gui, InputCmdBar:Margin, 5, 5
     Gui, InputCmdBar:Color, 000000, 000000
     WinSet, TransColor, 000000, InputCmdBar
-    Gui, InputCmdBar:Font, s15, Microsoft YaHei
+    Gui, InputCmdBar:Font, s16, Microsoft YaHei
     Gui, InputCmdBar:Add, Edit, w400 h38 cFFFFFF vInputCmd gInputCmdEditHandler, %InputCmdLastValue%
-    Gui, InputCmdBar:Add, ListView, AltSubmit -Hdr Background000000 cwhite w400 r7 vInputCmdLV gInputCmdLVHandler, cmd|name
-    Gui, InputCmdBar:Add, Button, Default w0 h0 hide vButton gInputCmdSubmit
+    Gui, InputCmdBar:Font, s11, Microsoft YaHei
+    Gui, InputCmdBar:Add, ListView, AltSubmit -Hdr -Multi ReadOnly Hidden LV0x8000 Background000000 cFFFFFF w400 r9 vInputCmdLV gInputCmdLVHandler, cmd|name
+    Gui, InputCmdBar:Add, Button, Default w0 h0 Hidden vButton gInputCmdSubmit
     guiX := 10
     guiY := A_ScreenHeight - 500
     Gui, InputCmdBar:Show, w410 h48 x%guiX% y%guiY%
-    Gui, InputCmd:Color, ,Black
     LV_ModifyCol(1, 180)
     LV_ModifyCol(2, 200)
-    GuiControl, InputCmdBar:Hide, InputCmdLV
     EnableBlur(InputCmdBarHwnd)
 return
 
 InputCmdSubmit(CtrlHwnd, GuiEvent, EventInfo) {
     Gui, InputCmdBar:Submit, NoHide
-    if (!InputCmd)
-        return
+    Gui, InputCmdBar:Default
     GuiControlGet, focusedControl, FocusV
     if (focusedControl == "InputCmd") {
     } else if (focusedControl == "InputCmdLV") {
@@ -466,71 +486,89 @@ InputCmdBarGuiEscape:
     Gui, InputCmdBar:Submit, NoHide
     if (InputCmd)
         InputCmdLastValue := InputCmd
-    Gui, InputCmdBar:Destroy
+    Gui, InputCmdBar:Hide
     InputCmdBarExist := false
 return
 
 InputCmdEditHandler(CtrlHwnd, GuiEvent, EventInfo) {
-    ;目前只处理g get do q的命令
     Gui, InputCmdBar:Submit, NoHide
     Gui, InputCmdBar:Show, h48
     GuiControl, InputCmdBar:Hide, InputCmdLV
     LV_Delete()
-    InputCmd :=  LTrim(InputCmd)
+    InputCmd := LTrim(InputCmd)
     inputCmdSpacePos := InStr(InputCmd, " ", false)
-    if (!inputCmdSpacePos)
-        return
-    inputCmdKey := SubStr(InputCmd, 1, inputCmdSpacePos-1)
-    if (inputCmdKey not in g,get,do,q)
-        return
-    topChildCmds := jsonCmdTree[inputCmdKey]
-    if (!topChildCmds)
-        return
-    inputCmdValue := LTrim(SubStr(InputCmd, inputCmdSpacePos))
-    if (!inputCmdValue)
-        return
-    
-    
-    for cmdKey, branchId in topChildCmds {
-        if (RegExMatch(cmdKey, "i)^" inputCmdValue)) {
-            branch := jsonCmdTreeKV[branchId]
-            LV_Add(, inputCmdKey " " cmdKey, branch.name)
+    if (inputCmdSpacePos) {
+        inputCmdKey := SubStr(InputCmd, 1, inputCmdSpacePos-1)
+        if (inputCmdKey not in g,get,do,q)
+            return
+        topChildCmds := jsonCmdTree[inputCmdKey]
+        if (!topChildCmds)
+            return
+        inputCmdValue := LTrim(SubStr(InputCmd, inputCmdSpacePos))
+        for cmdKey, branchId in topChildCmds {
+            if (RegExMatch(cmdKey, "i)^" inputCmdValue))
+                LV_Add(, inputCmdKey " " cmdKey, jsonCmdTreeKV[branchId].name)
         }
-            
+    } else {
+        for fileName, fileDesc in jsonCmdPath {
+            if (RegExMatch(fileName, "i)^" InputCmd))
+                LV_Add(, fileName, fileDesc)
+        }
     }
-    Gui, InputCmdBar:Show, h260
-    GuiControl, InputCmdBar:Show, InputCmdLV
+    if (LV_GetCount()) {
+        Gui, InputCmdBar:Show, h260
+        GuiControl, InputCmdBar:Show, InputCmdLV
+    }
 }
 InputCmdLVHandler(CtrlHwnd, GuiEvent, EventInfo) {
-	if (GuiEvent == "K") {
-        if (EventInfo = 32) { ;空格选择执行该命令
-            InputCmdSubmit(CtrlHwnd, GuiEvent, EventInfo)
-        }
-	} else if (GuiEvent == "DoubleClick") {
+	if (GuiEvent == "DoubleClick") {
         InputCmdSubmit(CtrlHwnd, GuiEvent, EventInfo)
-	}
+	} else if (GuiEvent == "K") {
+        if (EventInfo == 32) {  ;空格键切换回输入框继续编辑
+            Gui, InputCmdBar:Default
+            rowNum := LV_GetNext(0, "Focused")
+            if (rowNum)
+                LV_Modify(rowNum, "-Focus -Select")
+            GuiControl, Focus, InputCmd
+        }
+    }
 }
 
 #If WinActive(A_ScriptName) and WinActive("ahk_class AutoHotkeyGUI")
     ~Up::
         Gui, InputCmdBar:Default
         GuiControlGet, focusedControl, FocusV
-        if (focusedControl != "InputCmdLV")
-            return
-        rowNum := LV_GetNext(0, "Focused")
-        if (rowNum == 1) {
-            LV_Modify(1, "-Focus -Select")
-            GuiControl, Focus, InputCmd
+        if (focusedControl == "InputCmd") {
+            if (LV_GetCount()) {
+                GuiControl, InputCmdBar:Focus, InputCmdLV
+                Send, ^{End}
+            }
+        } else if (focusedControl == "InputCmdLV") {
+            rowNum := LV_GetNext(0, "Focused")
+            if (rowNum == 1) {
+                LV_Modify(1, "-Focus -Select")
+                GuiControl, Focus, InputCmd
+            }
         }
     return
     ~Down::
         Gui, InputCmdBar:Default
         GuiControlGet, focusedControl, FocusV
-        if (focusedControl != "InputCmd")
-            return
-        if (LV_GetCount()) {
-            GuiControl, InputCmdBar:Focus, InputCmdLV
+        if (focusedControl == "InputCmd") {
+            if (LV_GetCount()) {
+                GuiControl, InputCmdBar:Focus, InputCmdLV
+                Send, ^{Home}
+            }
+        } else if (focusedControl == "InputCmdLV") {
+            rowNum := LV_GetNext(0, "Focused")
+            if (rowNum == LV_GetCount()) {
+                LV_Modify(rowNum, "-Focus -Select")
+                GuiControl, Focus, InputCmd
+            }
         }
+    return
+    F1::
+        gosub, GuiTV
     return
 #If
 ;========================= 输入Bar =========================
@@ -594,36 +632,74 @@ LoadJsonConfLoop(childCmds, branchs) {
 }
 
 
+;读取path目录中的命令
+LoadCmdPathConf() {
+    FileEncoding
+    paths := ["C:\path", "C:\path\bat"]
+    for index, path in paths {
+        Loop, Files, %path%\*
+        {
+            filePath := fileName := fileExt := fileDesc :=
+            if (A_LoopFileExt == "lnk") {
+                FileGetShortcut, %A_LoopFileFullPath%, filePath
+                if (!filePath || !FileExist(filePath))
+                    continue
+            } else {
+                filePath := A_LoopFileFullPath
+                fileExt := A_LoopFileExt
+            }
+            
+            
+            SplitPath, filePath,,, fileExt, fileName
+            if (fileExt == "exe") {
+                fileDesc := FileGetDesc(filePath)
+            } else if (fileExt == "bat") {
+                file := FileOpen(filePath, "r")
+                fileContent := file.Read()
+                RegExMatch(fileContent, "OU)title\s.*\s", fileDescMatch)
+                fileDesc := fileDescMatch.value
+                fileDesc := StrReplace(fileDesc, "title ")
+                fileDesc := StrReplace(fileDesc, "&")
+                jsonFile.Close()
+            } else {
+                continue
+            }
+            jsonCmdPath[fileName] := fileDesc
+        }
+    }
+}
+
 
 
 InputCmdExec(inputCmd) {
     WinGet, inputCmdCurWinId, ID, A
-    StringGetPos, inputCmdFlag, inputCmd, %A_Space%, L1
-    if (ErrorLevel) {
-        inputCmdKey := inputCmd
-    } else {
-        StringSplit, inputCmdArray, inputCmd, %A_Space%  ;检测到空格，拆分命令
-        inputCmdKey := inputCmdArray1
-        StringLen, inputCmdKeyLen, inputCmdKey
-        inputCmdValue := SubStr(inputCmd, inputCmdKeyLen+2)
-        StringGetPos, inputCmdFlag, inputCmdValue, %A_Space%, L1  ;检测到空格2，拆分携带参数
-        if (!ErrorLevel) {
-            StringSplit, inputCmdValueArray, inputCmdValue, %A_Space%
-            inputCmdValue := inputCmdValueArray1
-            inputCmdValueExtra := inputCmdValueArray2
+    inputCmd := LTrim(inputCmd)
+    inputCmdSpacePos := InStr(inputCmd, " ", false)
+    if (inputCmdSpacePos) {
+        inputCmdKey := SubStr(inputCmd, 1, inputCmdSpacePos-1)
+        inputCmdValue := LTrim(SubStr(inputCmd, inputCmdSpacePos))
+        
+        inputCmdSpacePos2 := InStr(inputCmdValue, " ", false)
+        if (inputCmdSpacePos2) {
+            inputCmdValueExtra := LTrim(SubStr(inputCmdValue, inputCmdSpacePos2))
+            inputCmdValue := SubStr(inputCmdValue, 1, inputCmdSpacePos2-1)
         }
+    } else {
+        ExecNativeCmd(inputCmd, inputCmdKey, inputCmdValue)
+        return
     }
     if (!inputCmdKey)
         return
-    
     topChildCmds := jsonCmdTree[inputCmdKey]
     if (!topChildCmds) {
         ExecNativeCmd(inputCmd, inputCmdKey, inputCmdValue)
         return
     }
     cmdBranchId := topChildCmds[inputCmdValue]
-    if (!cmdBranchId)
+    if (!cmdBranchId) {
+        tip("未找到匹配的命令")
         return
+    }
     cmdBranch := jsonCmdTreeKV[cmdBranchId]
     if (!cmdBranch)
         return
@@ -735,7 +811,7 @@ TVParse(parentId, branch) {
         jsonTreeCmdCount += 1
     } else {
         if (parentId == 0)
-            global rootBranchId := branchId := TV_Add(branch.name, parentId, "Bold Icon3 Expand")
+            rootBranchId := branchId := TV_Add(branch.name, parentId, "Bold Icon3 Expand")
         else
             branchId := TV_Add(branch.name, parentId, "Bold Icon2")
     }
@@ -805,5 +881,26 @@ TVExpandLevelAfter(cacheBranchNames, branch, level) {
             TVExpandLevelAfter(cacheBranchNames, child, level+1)
         }
     }
+}
+
+
+GetTopChildBranchId(branchId) {
+    parentBranchId := TV_GetParent(branchId)
+    if (parentBranchId == 0)
+        return 0        
+    if (parentBranchId == rootBranchId)
+        return branchId
+    return GetTopChildBranchId(parentBranchId)
+}
+
+FileGetDesc(lptstrFilename) {
+	dwLen := DllCall("Version.dll\GetFileVersionInfoSize", "Str", lptstrFilename, "Ptr", 0)
+	dwLen := VarSetCapacity( lpData, dwLen + A_PtrSize)
+	DllCall("Version.dll\GetFileVersionInfo", "Str", lptstrFilename, "UInt", 0, "UInt", dwLen, "Ptr", &lpData) 
+	DllCall("Version.dll\VerQueryValue", "Ptr", &lpData, "Str", "\VarFileInfo\Translation", "PtrP", lplpBuffer, "PtrP", puLen )
+	sLangCP := Format("{:04X}{:04X}", NumGet(lplpBuffer+0, "UShort"), NumGet(lplpBuffer+2, "UShort"))
+    DllCall("Version.dll\VerQueryValue", "Ptr", &lpData, "Str", "\StringFileInfo\" sLangCp "\FileDescription", "PtrP", lplpBuffer, "PtrP", puLen )
+		? i := StrGet(lplpBuffer, puLen) : ""
+	return i
 }
 ;========================= 公共函数 =========================
