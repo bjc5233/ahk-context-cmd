@@ -24,11 +24,16 @@
 
 
 ### 更新
+* 2018-06-11  1:19:57 增加搜索栏主题颜色
 * 2018-05-29 16:54:53 最初版本
 
 
 
 ### 演示
+<div align=center><img src="https://github.com/bjc5233/ahk-context-cmd/raw/master/resources/demo.png"/></div>
+<div align=center><img src="https://github.com/bjc5233/ahk-context-cmd/raw/master/resources/demo2.png"/></div>
+<div align=center><img src="https://github.com/bjc5233/ahk-context-cmd/raw/master/resources/demo3.png"/></div>
+<div align=center><img src="https://github.com/bjc5233/ahk-context-cmd/raw/master/resources/demo4.png"/></div>
 
 
 ### 其他

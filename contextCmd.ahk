@@ -9,6 +9,10 @@
 ;    => q.bat qq联系人跳转
 ;    => do.bat
 ;    => 其他系统级别的命令、快捷方式 【calc notepad...】
+;  主题说明
+;    1.auto模式(默认), 根据系统当前壁纸配置颜色, 窗口位置中间【需要第三方命令行工具imagemagick-convert.exe】
+;    2.blur模式, AeroGlass风格, 由于在偏白色背景下无法看清文字, 因此位置放置在左下角
+;    3.custom模式, 配置的固定几种颜色风格, 每次展示时随机颜色风格, 窗口位置中间
 ;备注
 ;  1. {vkC0}表示`
 ;  2. 配置命令的[执行]文本框中, 在第一行输入[目标语言注释符号 execLang= 目标语言]格式, 
@@ -23,17 +27,26 @@
 ;      注意:Gui, AddBranchItem:Add, Text, x+5 yp-3 w400 vAddBranchParent, %parentBranchName%
 ;           vAddBranchParent必须为global类型
 ;   5.inputCmdBar窗口大小目前写死, 使用变量定制
+;   6.将公共变量集中定义
+;   7.为命令添加权重，被使用次数越多的命令拍的更加靠前
+;   8.数据存储到sqlite
 ;========================= 环境配置 =========================
 #Persistent
 #NoEnv
 #SingleInstance, Force
-SetBatchLines, -1
+SetBatchLines, 10ms
+#HotkeyInterval 1000
+DetectHiddenWindows, On
+SetTitleMatchMode, 2
 SetKeyDelay, -1
 StringCaseSense, off
 CoordMode, Menu
 #Include <JSON> 
 #Include <PRINT>
 #Include <CuteWord>
+global confs := Object()
+global themeConfs := Object
+global themeConfType := "auto"
 
 global rootBranchId :=
 global jsonTree := Object()
@@ -46,6 +59,7 @@ global jsonCmdPath := Object()
 global execLangPathBase := A_ScriptDir "\cache"
 IfNotExist, %execLangPathBase%
     FileCreateDir, %execLangPathBase%
+LoadConf()
 LoadJsonConf()
 LoadCmdPathConf()
 gosub, GuiMenuTray
@@ -57,6 +71,7 @@ gosub, GuiMenuTray
 global InputCmd :=
 global InputCmdMode :=
 global InputCmdLastValue :=
+MButton::
 #R::
     gosub, GuiInputCmdBar
 return
@@ -83,6 +98,7 @@ GuiMenuTray:
 	Menu, Tray, NoStandard
     Menu, Tray, add, 修改菜单, GuiTV
 	Menu, Tray, add, 命令输入, GuiInputCmdBar
+	Menu, Tray, add, 定位文件, MenuTrayLocation
 	Menu, Tray, add
 	Menu, Tray, add, 重启, MenuTrayReload
 	Menu, Tray, add, 退出, MenuTrayExit
@@ -121,7 +137,8 @@ GuiTV:
     Gui, JsonTreeView:Show, , 命令树管理
     SB_SetText("总计" . jsonTreeCmdCount . "条命令")
 return
-TVClick:
+
+TVClick(CtrlHwnd, GuiEvent, EventInfo) {
 	if (A_GuiEvent == "K") {
 		if (A_EventInfo = 46)
 			gosub, TVDelete
@@ -130,7 +147,7 @@ TVClick:
 	} else if (A_GuiControl = "JsonTreeView") {
         TV_Modify(A_EventInfo, "Select Vis")
 	}
-return
+}
 ;========================= 构建界面 =========================
 
 
@@ -157,7 +174,7 @@ TVAdd:
 	Gui, AddBranchItem:Font,, Microsoft YaHei
 	Gui, AddBranchItem:Add, GroupBox, xm y+10 w500 h210
     Gui, AddBranchItem:Add, Text, xm+10 y+15 y35 w60, 父级：
-	Gui, AddBranchItem:Add, Text, x+5 yp-3 w400 vAddBranchParent, %parentBranchName%
+	Gui, AddBranchItem:Add, Text, x+5 yp-3 w400, %parentBranchName%
 	Gui, AddBranchItem:Add, Text, xm+10 y+15 w60, 名称：
 	Gui, AddBranchItem:Add, Edit, x+5 yp-3 w400 vAddBranchName,
 	Gui, AddBranchItem:Add, Text, xm+10 y+15 w60, 命令：
@@ -449,22 +466,57 @@ GuiInputCmdBar:
     InputCmdMode := "inputBar"
     global InputCmdBarHwnd := "inputCmdBar"
     global InputCmdBarExist := true
+    
+    themeConf := themeConfs[themeConfType]
+    if (themeConfType == "auto") {
+        RegRead, wallpaperPath, HKEY_CURRENT_USER\Control Panel\Desktop, WallPaper
+        FileGetTime, wallpaperTimeStamp , %wallpaperPath%, M
+        if (wallpaperPath != confs.LastWallpaperPath || wallpaperTimeStamp != confs.LastWallpaperTimeStamp) {
+            wallpaperHex := ImgGetDominantColor(wallpaperPath)
+            confs.LastWallpaperPath := wallpaperPath
+            confs.LastWallpaperTimeStamp := wallpaperTimeStamp
+            confs.LastWallpaperColor := wallpaperHex
+            SaveConf()
+            themeBgColor := wallpaperHex
+        } else {
+            themeBgColor := confs.LastWallpaperColor
+        }
+        themeFontColor := themeConf.fontColor
+        themeX := themeY :=
+    } else if (themeConfType == "blur") {
+        themeBgColor := themeConf.bgColor
+        themeFontColor := themeConf.fontColor
+        themeX := themeConf.x
+        themeY := themeConf.y
+    } else if (themeConfType == "custom") {
+        Random, themeConfCustomIndex, themeConf.MinIndex(), themeConf.MaxIndex()
+        themeConfCustom := themeConf[themeConfCustomIndex]
+        themeBgColor := themeConfCustom.bgColor
+        themeFontColor := themeConfCustom.fontColor
+        themeX := themeY :=
+    } else {
+        return
+    }
     OnMessage(0x0201, "WM_LBUTTONDOWN")
-    Gui, InputCmdBar:New, +LastFound -Caption -Border +hWnd%InputCmdBarHwnd%
+    Gui, InputCmdBar:New, +LastFound -Caption -Border +AlwaysOnTop +hWnd%InputCmdBarHwnd%
     Gui, InputCmdBar:Margin, 5, 5
-    Gui, InputCmdBar:Color, 000000, 000000
-    WinSet, TransColor, 000000, InputCmdBar
-    Gui, InputCmdBar:Font, s16, Microsoft YaHei
-    Gui, InputCmdBar:Add, Edit, w400 h38 cFFFFFF vInputCmd gInputCmdEditHandler, %InputCmdLastValue%
-    Gui, InputCmdBar:Font, s11, Microsoft YaHei
-    Gui, InputCmdBar:Add, ListView, AltSubmit -Hdr -Multi ReadOnly Hidden LV0x8000 Background000000 cFFFFFF w400 r9 vInputCmdLV gInputCmdLVHandler, cmd|name
+    Gui, InputCmdBar:Color, %themeBgColor%, %themeBgColor%
+    Gui, InputCmdBar:Font, c%themeFontColor% s16 wbold, Microsoft YaHei
+    Gui, InputCmdBar:Add, Edit, w450 h38 vInputCmd gInputCmdEditHandler, %InputCmdLastValue%
+    Gui, InputCmdBar:Font, s10 -w, Microsoft YaHei
+    Gui, InputCmdBar:Add, ListView, AltSubmit -Hdr -Multi ReadOnly Hidden LV0x8000 w450 r9 vInputCmdLV gInputCmdLVHandler, cmd|name
     Gui, InputCmdBar:Add, Button, Default w0 h0 Hidden vButton gInputCmdSubmit
     guiX := 10
     guiY := A_ScreenHeight - 500
-    Gui, InputCmdBar:Show, w410 h48 x%guiX% y%guiY%
+    Winset, Transparent, 240
+    if (themeX && themeY)
+        Gui, InputCmdBar:Show, w460 h48 x%themeX% y%themeY%
+    else
+        Gui, InputCmdBar:Show, w460 h48 center
     LV_ModifyCol(1, 180)
-    LV_ModifyCol(2, 200)
-    EnableBlur(InputCmdBarHwnd)
+    LV_ModifyCol(2, 250)
+    if (themeConfType == "blur")
+        EnableBlur(InputCmdBarHwnd)
 return
 
 InputCmdSubmit(CtrlHwnd, GuiEvent, EventInfo) {
@@ -477,11 +529,13 @@ InputCmdSubmit(CtrlHwnd, GuiEvent, EventInfo) {
         if (!rowNum)
             return
         LV_GetText(InputCmd, rowNum, 1)
+        ;GuiControl,, InputCmd, %InputCmd%
     }
     Gui, InputCmdBar:Hide
     InputCmdLastValue := InputCmd
     InputCmdExec(InputCmd)
 }
+
 InputCmdBarGuiEscape:
     Gui, InputCmdBar:Submit, NoHide
     if (InputCmd)
@@ -584,6 +638,10 @@ MenuTrayExit:
     ExitApp
 return
 
+MenuTrayLocation:
+    Run, % "explorer /select," A_ScriptFullPath
+return
+
 TVExit:
 	if (jsonTreeModifyFlag) {
 		MsgBox, 51, 关闭, 命令已修改，是否保存后再退出？
@@ -635,13 +693,20 @@ LoadJsonConfLoop(childCmds, branchs) {
 ;读取path目录中的命令
 LoadCmdPathConf() {
     FileEncoding
-    paths := ["C:\path", "C:\path\bat"]
-    for index, path in paths {
-        Loop, Files, %path%\*
+    pathConfs := [{"path": "C:\WINDOWS\System32\*.exe", "type": "system"}, {"path": "C:\WINDOWS\*.exe", "type": "system"}, {"path": "C:\path\*", "type": "custom"}, {"path": "C:\path\bat\*", "type": "custom"}]
+    for index, pathConf in pathConfs {
+        if (pathConf.type == "system")
+            fileDescPrefix := "*"
+        else
+            fileDescPrefix := " "
+        Loop, Files, % pathConf.path, F
         {
-            filePath := fileName := fileExt := fileDesc :=
-            if (A_LoopFileExt == "lnk") {
-                FileGetShortcut, %A_LoopFileFullPath%, filePath
+            filePath := fileName := fileExt := fileDesc := fileLnkDesc :=
+            SplitPath, A_LoopFileFullPath,,, fileExt, fileName
+            if (!A_LoopFileExt) {
+                fileDesc := fileName
+            } else if (A_LoopFileExt == "lnk") {
+                FileGetShortcut, %A_LoopFileFullPath%, filePath,,,fileDesc
                 if (!filePath || !FileExist(filePath))
                     continue
             } else {
@@ -649,27 +714,49 @@ LoadCmdPathConf() {
                 fileExt := A_LoopFileExt
             }
             
-            
-            SplitPath, filePath,,, fileExt, fileName
-            if (fileExt == "exe") {
-                fileDesc := FileGetDesc(filePath)
-            } else if (fileExt == "bat") {
-                file := FileOpen(filePath, "r")
-                fileContent := file.Read()
-                RegExMatch(fileContent, "OU)title\s.*\s", fileDescMatch)
-                fileDesc := fileDescMatch.value
-                fileDesc := StrReplace(fileDesc, "title ")
-                fileDesc := StrReplace(fileDesc, "&")
-                jsonFile.Close()
-            } else {
-                continue
+            if (!fileDesc) {
+                SplitPath, filePath,,, fileExt
+                if (fileExt == "exe") {
+                    fileDesc := FileGetDesc(filePath)
+                } else if (fileExt == "bat") {
+                    file := FileOpen(filePath, "r")
+                    fileContent := file.Read()
+                    RegExMatch(fileContent, "OU)title\s.*\s", fileDescMatch)
+                    fileDesc := fileDescMatch.value
+                    fileDesc := StrReplace(fileDesc, "title ")
+                    fileDesc := StrReplace(fileDesc, "&")
+                    jsonFile.Close()
+                } else {
+                    continue
+                }
             }
-            jsonCmdPath[fileName] := fileDesc
+            jsonCmdPath[fileName] := fileDescPrefix fileDesc
         }
     }
 }
 
-
+LoadConf() {
+    FileEncoding, UTF-8
+    confsFilePath := A_ScriptDir "\contextCmdConf.json"
+    confsFile := FileOpen(confsFilePath, "r")
+    if !IsObject(confsFile)
+        throw Exception("Can't access file for JSONFile instance: " confsFile, -1)
+    try {
+        confs := JSON.Load(confsFile.Read())
+        themeConfs := confs.theme
+    } catch e {
+        MsgBox, JSON文件格式错误，请检查[%confsFilePath%]
+        return
+    }
+    confFile.Close()
+}
+SaveConf() {
+    FileEncoding, UTF-8
+    confsFilePath := A_ScriptDir "\contextCmdConf.json"
+    confsStr := JSON.Dump(confs)
+    FileDelete, %confsFilePath%
+    FileAppend, %confsStr%, %confsFilePath%
+}
 
 InputCmdExec(inputCmd) {
     WinGet, inputCmdCurWinId, ID, A
@@ -902,5 +989,55 @@ FileGetDesc(lptstrFilename) {
     DllCall("Version.dll\VerQueryValue", "Ptr", &lpData, "Str", "\StringFileInfo\" sLangCp "\FileDescription", "PtrP", lplpBuffer, "PtrP", puLen )
 		? i := StrGet(lplpBuffer, puLen) : ""
 	return i
+}
+
+ImgGetDominantColor(imgPath) {
+    rgb := StdoutToVar_CreateProcess("C:\path\bat\batlearn\loadExes\imagemagick\imagemagick-convert.exe """ imgPath """ -scale 1x1 -format %[pixel:u] info:-")
+    rgb := StrReplace(rgb, "srgb(")
+    rgb := StrReplace(rgb, ")")
+    rgbArray := StrSplit(rgb, ",")
+    return Rgb2Hex(rgbArray)
+}
+Rgb2Hex(rgbArray) {
+    return Format("{:X}", rgbArray[1]) Format("{:X}", rgbArray[2]) Format("{:X}", rgbArray[3])
+}
+StdoutToVar_CreateProcess(sCmd, sEncoding:="CP0", sDir:="", ByRef nExitCode:=0) {
+    DllCall( "CreatePipe",           PtrP,hStdOutRd, PtrP,hStdOutWr, Ptr,0, UInt,0 )
+    DllCall( "SetHandleInformation", Ptr,hStdOutWr, UInt,1, UInt,1                 )
+
+            VarSetCapacity( pi, (A_PtrSize == 4) ? 16 : 24,  0 )
+    siSz := VarSetCapacity( si, (A_PtrSize == 4) ? 68 : 104, 0 )
+    NumPut( siSz,      si,  0,                          "UInt" )
+    NumPut( 0x100,     si,  (A_PtrSize == 4) ? 44 : 60, "UInt" )
+    NumPut( hStdOutWr, si,  (A_PtrSize == 4) ? 60 : 88, "Ptr"  )
+    NumPut( hStdOutWr, si,  (A_PtrSize == 4) ? 64 : 96, "Ptr"  )
+
+    If ( !DllCall( "CreateProcess", Ptr,0, Ptr,&sCmd, Ptr,0, Ptr,0, Int,True, UInt,0x08000000
+                                  , Ptr,0, Ptr,sDir?&sDir:0, Ptr,&si, Ptr,&pi ) )
+        Return ""
+      , DllCall( "CloseHandle", Ptr,hStdOutWr )
+      , DllCall( "CloseHandle", Ptr,hStdOutRd )
+
+    DllCall( "CloseHandle", Ptr,hStdOutWr ) ; The write pipe must be closed before reading the stdout.
+    While ( 1 )
+    { ; Before reading, we check if the pipe has been written to, so we avoid freezings.
+        If ( !DllCall( "PeekNamedPipe", Ptr,hStdOutRd, Ptr,0, UInt,0, Ptr,0, UIntP,nTot, Ptr,0 ) )
+            Break
+        If ( !nTot )
+        { ; If the pipe buffer is empty, sleep and continue checking.
+            Sleep, 100
+            Continue
+        } ; Pipe buffer is not empty, so we can read it.
+        VarSetCapacity(sTemp, nTot+1)
+        DllCall( "ReadFile", Ptr,hStdOutRd, Ptr,&sTemp, UInt,nTot, PtrP,nSize, Ptr,0 )
+        sOutput .= StrGet(&sTemp, nSize, sEncoding)
+    }
+    
+    ; * SKAN has managed the exit code through SetLastError.
+    DllCall( "GetExitCodeProcess", Ptr,NumGet(pi,0), UIntP,nExitCode )
+    DllCall( "CloseHandle",        Ptr,NumGet(pi,0)                  )
+    DllCall( "CloseHandle",        Ptr,NumGet(pi,A_PtrSize)          )
+    DllCall( "CloseHandle",        Ptr,hStdOutRd                     )
+    Return sOutput
 }
 ;========================= 公共函数 =========================
