@@ -24,12 +24,11 @@
 ;  3.增加菜单搜索命令
 ;  3.增加菜单判断命令是否已经存在
 ;  4.label方式调用，导致global变量太多过于混乱，修改为函数调用
-;      注意:Gui, AddBranchItem:Add, Text, x+5 yp-3 w400 vAddBranchParent, %parentBranchName%
+;      注意:Gui, GuiTVAdd:Add, Text, x+5 yp-3 w400 vAddBranchParent, %parentBranchName%
 ;           vAddBranchParent必须为global类型
 ;   5.inputCmdBar窗口大小目前写死, 使用变量定制
-;   6.将公共变量集中定义
-;   7.为命令添加权重，被使用次数越多的命令拍的更加靠前
-;   8.数据存储到sqlite
+;   6.为命令添加权重，被使用次数越多的命令拍的更加靠前
+;   7.数据存储到sqlite
 ;========================= 环境配置 =========================
 #Persistent
 #NoEnv
@@ -43,6 +42,7 @@ StringCaseSense, off
 CoordMode, Menu
 #Include <JSON> 
 #Include <PRINT>
+#Include <TIP>
 #Include <CuteWord>
 global confs := Object()
 global themeConfs := Object
@@ -62,7 +62,7 @@ IfNotExist, %execLangPathBase%
 LoadConf()
 LoadJsonConf()
 LoadCmdPathConf()
-gosub, GuiMenuTray
+MenuTray()
 ;========================= 环境配置 =========================
 
 
@@ -73,14 +73,13 @@ global InputCmdMode :=
 global InputCmdLastValue :=
 MButton::
 #R::
-    gosub, GuiInputCmdBar
+    GuiInputCmdBar("", "", "")
 return
 ~RControl::
 	(Count < 1 && A_TimeSincePriorHotkey > 80 && A_TimeSincePriorHotkey < 400 && A_PriorHotkey = A_ThisHotkey) ? Count ++ : (Count := 0)
 	if (Count > 0)
-        gosub, GuiInputCmdBar
+        GuiInputCmdBar("", "", "")
 return
-
 ~`::
     Input, InputCmd, V T10, {vkC0},
     if (!InputCmd)
@@ -94,32 +93,21 @@ return
 
 
 ;========================= 构建界面 =========================
-GuiMenuTray:
-	Menu, Tray, NoStandard
-    Menu, Tray, add, 修改菜单, GuiTV
-	Menu, Tray, add, 命令输入, GuiInputCmdBar
-	Menu, Tray, add, 定位文件, MenuTrayLocation
-	Menu, Tray, add
-	Menu, Tray, add, 重启, MenuTrayReload
-	Menu, Tray, add, 退出, MenuTrayExit
-    Menu, Tray, Default, 修改菜单
-return
-
-GuiTV:
-    global jsonTreeModifyFlag := false
-    global jsonTreeCmdCount := 0
+global jsonTreeModifyFlag := false
+global jsonTreeCmdCount := 0
+global JsonTreeView := 0
+GuiTV(ItemName, ItemPos, MenuName) {
     tvImageList := IL_Create(5)
     IL_Add(tvImageList, "shell32.dll", 74)
     IL_Add(tvImageList, "shell32.dll", 4)
     IL_Add(tvImageList, "shell32.dll", 135)
-    Gui, JsonTreeView:Destroy
-    Gui, JsonTreeView:New
-    Gui, JsonTreeView:Font,, Microsoft YaHei
-    Gui, JsonTreeView:Add, TreeView, vJsonTreeView w450 r30 Readonly AltSubmit Checked HScroll hwndHTV gTVClick ImageList%tvImageList%
-    GuiControl, JsonTreeView:-Redraw, JsonTreeView
+    Gui, GuiJsonTV:New
+    Gui, GuiJsonTV:Font,, Microsoft YaHei
+    Gui, GuiJsonTV:Add, TreeView, vJsonTreeView w450 r30 Readonly AltSubmit Checked HScroll hwndHTV gTVHandler ImageList%tvImageList%
+    GuiControl, GuiJsonTV:-Redraw, JsonTreeView
     TVParse(0, jsonTree)
-    GuiControl, JsonTreeView:+Redraw, JsonTreeView
-    Gui, JsonTreeView:Add, StatusBar
+    GuiControl, GuiJsonTV:+Redraw, JsonTreeView
+    Gui, GuiJsonTV:Add, StatusBar
     
     Menu, JsonTreeMenu, Add, 添加, TVAdd
     Menu, JsonTreeMenu, Icon, 添加, SHELL32.dll, 1
@@ -134,16 +122,16 @@ GuiTV:
     Menu, JsonTreeMenu, Add, 下移, TVDown
     Menu, JsonTreeMenu, Icon, 下移, SHELL32.dll, 248
     Gui, Menu, JsonTreeMenu
-    Gui, JsonTreeView:Show, , 命令树管理
-    SB_SetText("总计" . jsonTreeCmdCount . "条命令")
-return
+    Gui, GuiJsonTV:Show, , 命令树管理
+    SB_SetText("总计" jsonTreeCmdCount "条命令")
+}
 
-TVClick(CtrlHwnd, GuiEvent, EventInfo) {
+TVHandler(CtrlHwnd, GuiEvent, EventInfo) {
 	if (A_GuiEvent == "K") {
 		if (A_EventInfo = 46)
-			gosub, TVDelete
+			TVDelete("", "", "")
 	} else if (A_GuiEvent == "DoubleClick") {
-        gosub, TVEdit
+        TVEdit("", "", "")
 	} else if (A_GuiControl = "JsonTreeView") {
         TV_Modify(A_EventInfo, "Select Vis")
 	}
@@ -153,47 +141,55 @@ TVClick(CtrlHwnd, GuiEvent, EventInfo) {
 
 
 ;========================= 树菜单->添加 =========================
-TVAdd:
+global TVAddBranchNameEdit :=
+global TVAddBranchCmdEdit :=
+global TVAddBranchExecEdit :=
+global TVAddBranchIndex :=
+global TVAddParentBranchId :=
+TVAdd(ItemName, ItemPos, MenuName) {
+    Gui, GuiJsonTV:Default
 	selectBranchId := TV_GetSelection()
     if (!selectBranchId)
         selectBranchId := rootBranchId
     selectBranch := jsonTreeKV[selectBranchId]
     if (selectBranch.cmd) {
-        addBranchIndex := selectBranchId
-        parentBranchId := TV_GetParent(selectBranchId)
-        parentBranch := jsonTreeKV[parentBranchId]
+        TVAddBranchIndex := selectBranchId
+        TVAddParentBranchId := TV_GetParent(selectBranchId)
+        parentBranch := jsonTreeKV[TVAddParentBranchId]
         parentBranchName := parentBranch.name
     } else {
-        addBranchIndex :=
-        parentBranchId := selectBranch.BranchId
+        TVAddBranchIndex :=
+        TVAddParentBranchId := selectBranch.BranchId
         parentBranchName := selectBranch.name
     }
-	Gui, AddBranchItem:Destroy
-    Gui, AddBranchItem:New
-	Gui, AddBranchItem:Margin, 20, 20
-	Gui, AddBranchItem:Font,, Microsoft YaHei
-	Gui, AddBranchItem:Add, GroupBox, xm y+10 w500 h210
-    Gui, AddBranchItem:Add, Text, xm+10 y+15 y35 w60, 父级：
-	Gui, AddBranchItem:Add, Text, x+5 yp-3 w400, %parentBranchName%
-	Gui, AddBranchItem:Add, Text, xm+10 y+15 w60, 名称：
-	Gui, AddBranchItem:Add, Edit, x+5 yp-3 w400 vAddBranchName,
-	Gui, AddBranchItem:Add, Text, xm+10 y+15 w60, 命令：
-	Gui, AddBranchItem:Add, Edit, x+5 yp-3 w400 vAddBranchCmd,
-  	Gui, AddBranchItem:Add, Text, xm+10 y+15 w60, 执行：
-	Gui, AddBranchItem:Add, Edit, x+5 yp-3 w400 r10 vAddBranchExec,
-	Gui, AddBranchItem:Add, Button, Default xm+180 y+15 w75 gTVAddSave, 确定(&Y)
-	Gui, AddBranchItem:Add, Button, x+20 w75 gTVAddCancel, 取消(&C)
-	Gui, AddBranchItem:Show, ,添加命令
-return
-TVAddSave:
-    Gui, AddBranchItem:Submit, NoHide
-    if (!AddBranchName) {
+
+    Gui, GuiTVAdd:New
+	Gui, GuiTVAdd:Margin, 20, 20
+	Gui, GuiTVAdd:Font,, Microsoft YaHei
+	Gui, GuiTVAdd:Add, GroupBox, xm y+10 w500 h210
+    Gui, GuiTVAdd:Add, Text, xm+10 y+15 y35 w60, 父级：
+	Gui, GuiTVAdd:Add, Text, x+5 yp-3 w400, %parentBranchName%
+	Gui, GuiTVAdd:Add, Text, xm+10 y+15 w60, 名称：
+	Gui, GuiTVAdd:Add, Edit, x+5 yp-3 w400 vTVAddBranchNameEdit,
+	Gui, GuiTVAdd:Add, Text, xm+10 y+15 w60, 命令：
+	Gui, GuiTVAdd:Add, Edit, x+5 yp-3 w400 vTVAddBranchCmdEdit,
+  	Gui, GuiTVAdd:Add, Text, xm+10 y+15 w60, 执行：
+	Gui, GuiTVAdd:Add, Edit, x+5 yp-3 w400 r10 vTVAddBranchExecEdit,
+	Gui, GuiTVAdd:Add, Button, Default xm+180 y+15 w50 gTVAddSaveHandler, 确定
+	Gui, GuiTVAdd:Add, Button, x+20 w50 gTVAddCancelHandler, 取消
+	Gui, GuiTVAdd:Show, ,添加命令
+}
+
+TVAddSaveHandler(CtrlHwnd, GuiEvent, EventInfo) {
+    Gui, GuiTVAdd:Default
+    Gui, GuiTVAdd:Submit, NoHide
+    if (!TVAddBranchNameEdit) {
         MsgBox, 必须填写[名称]
         return
     }
     
-    Gui, JsonTreeView:Default
-    if (AddBranchCmd) {
+    Gui, GuiJsonTV:Default
+    if (TVAddBranchCmdEdit) {
         ;检查命令重复性
         ;注意jsonCmdTree中的branchId(文件中读取的)与jsonTreeKV中的branchId(每次新创建)是不一致的
         ;topChildBranchId := GetTopChildBranchId(parentBranchId)
@@ -205,34 +201,34 @@ TVAddSave:
         ;
         ;topChildCmds := jsonCmdTree[topChildBranch.name]
         ;for cmdKey, branchId in topChildCmds {
-        ;    if (cmdKey == AddBranchCmd) {
+        ;    if (cmdKey == TVAddBranchCmdEdit) {
         ;        cmd := jsonTreeKV[branchId]
         ;        MsgBox, % "该命令[" cmdKey "]已存在, 其名称为[" cmd.name "]!"
         ;        return
         ;    }
         ;}
-        newBranchId := TV_Add(AddBranchName " - " AddBranchCmd, parentBranchId, "Icon1 " addBranchIndex)
+        newBranchId := TV_Add(TVAddBranchNameEdit " - " TVAddBranchCmdEdit, TVAddParentBranchId, "Icon1 " TVAddBranchIndex)
     } else {
-        newBranchId := TV_Add(AddBranchName, parentBranchId, "Bold Icon2 " addBranchIndex)
+        newBranchId := TV_Add(TVAddBranchNameEdit, TVAddParentBranchId, "Bold Icon2 " TVAddBranchIndex)
     }
     
-    Gui, AddBranchItem:Destroy
-    TV_Modify(parentBranchId, "Expand")
-    newBranch := Object("branchId", newBranchId, "name", AddBranchName)
-    if (AddBranchCmd)
-        newBranch.cmd := AddBranchCmd
-    if (AddBranchExec)
-        newBranch.exec := AddBranchExec
+    Gui, GuiTVAdd:Destroy
+    TV_Modify(TVAddParentBranchId, "Expand")
+    newBranch := Object("branchId", newBranchId, "name", TVAddBranchNameEdit)
+    if (TVAddBranchCmdEdit)
+        newBranch.cmd := TVAddBranchCmdEdit
+    if (TVAddBranchExecEdit)
+        newBranch.exec := TVAddBranchExecEdit
     jsonTreeKV[newBranchId] := newBranch
     
     
     ;在children中指定位置插入新branch， 否则重启后位置又变为最后了
-    parentBranch := jsonTreeKV[parentBranchId]
+    parentBranch := jsonTreeKV[TVAddParentBranchId]
     parentBranchChildren := parentBranch.children
     if (parentBranchChildren) {
-        if (addBranchIndex) {
+        if (TVAddBranchIndex) {
             for index, child in parentBranchChildren {
-                if (child.branchId == addBranchIndex) {
+                if (child.branchId == TVAddBranchIndex) {
                     parentBranchChildren.InsertAt(index+1, newBranch)
                     break
                 }
@@ -244,93 +240,84 @@ TVAddSave:
         parentBranch.children := [newBranch]
     }
     jsonTreeModifyFlag := true
-return
-TVAddCancel:
-    Gui, AddBranchItem:Destroy
-    Gui, JsonTreeView:Default
-return
+}
+TVAddCancelHandler(CtrlHwnd, GuiEvent, EventInfo) {
+    Gui, GuiTVAdd:Destroy
+    Gui, GuiJsonTV:Default
+}
 ;========================= 树菜单->添加 =========================
 
 
 ;========================= 树菜单->编辑 =========================
-TVEdit:
-	branchId := TV_GetSelection()
-    if (branchId == rootBranchId)
+global TVEditBranchNameEdit :=
+global TVEditBranchCmdEdit :=
+global TVEditBranchExecEdit :=
+global TVEditBranchId :=
+TVEdit(ItemName, ItemPos, MenuName) {
+	TVEditBranchId := TV_GetSelection()
+    if (TVEditBranchId == rootBranchId)
         return        
-    branch := jsonTreeKV[branchId]
+    branch := jsonTreeKV[TVEditBranchId]
     branchName := branch.name
     branchExec := branch.exec
     branchCmd := branch.cmd
-	Gui, EditBranchItem:Destroy
-    Gui, EditBranchItem:New
-	Gui, EditBranchItem:Margin, 20, 20
-	Gui, EditBranchItem:Font,, Microsoft YaHei
-	Gui, EditBranchItem:Add, GroupBox, xm y+10 w500 h210
-	Gui, EditBranchItem:Add, Text, xm+10 y+30 y35 w60, 名称：
-	Gui, EditBranchItem:Add, Edit, x+5 yp-3 w400 vEditBranchName, %branchName%
-	Gui, EditBranchItem:Add, Text, xm+10 y+15 w60, 命令：
-	Gui, EditBranchItem:Add, Edit, x+5 yp-3 w400 vEditBranchCmd, %branchCmd%
-  	Gui, EditBranchItem:Add, Text, xm+10 y+15 w60, 执行：
-	Gui, EditBranchItem:Add, Edit, x+5 yp-3 w400 r10 vEditBranchExec, %branchExec%
-	Gui, EditBranchItem:Add, Button, Default xm+180 y+15 w75 gTVEditSave, 确定(&Y)
-	Gui, EditBranchItem:Add, Button, x+20 w75 gTVEditCancel,取消(&C)
-	Gui, EditBranchItem:Show, ,编辑命令 - %branchName%
-return
-TVEditSave:
-    Gui, EditBranchItem:Submit, NoHide
-    if (!EditBranchName) {
+	Gui, GuiTVEdit:Destroy
+    Gui, GuiTVEdit:New
+	Gui, GuiTVEdit:Margin, 20, 20
+	Gui, GuiTVEdit:Font,, Microsoft YaHei
+	Gui, GuiTVEdit:Add, GroupBox, xm y+10 w500 h210
+	Gui, GuiTVEdit:Add, Text, xm+10 y+30 y35 w60, 名称：
+	Gui, GuiTVEdit:Add, Edit, x+5 yp-3 w400 vTVEditBranchNameEdit, %branchName%
+	Gui, GuiTVEdit:Add, Text, xm+10 y+15 w60, 命令：
+	Gui, GuiTVEdit:Add, Edit, x+5 yp-3 w400 vTVEditBranchCmdEdit, %branchCmd%
+  	Gui, GuiTVEdit:Add, Text, xm+10 y+15 w60, 执行：
+	Gui, GuiTVEdit:Add, Edit, x+5 yp-3 w400 r10 vTVEditBranchExecEdit, %branchExec%
+	Gui, GuiTVEdit:Add, Button, Default xm+180 y+15 w50 gTVEditSaveHandler, 确定
+	Gui, GuiTVEdit:Add, Button, x+20 w50 gTVEditCancelHandler,取消
+	Gui, GuiTVEdit:Show, ,编辑命令 - %branchName%
+}
+TVEditSaveHandler(CtrlHwnd, GuiEvent, EventInfo) {
+    Gui, GuiTVEdit:Default
+    Gui, GuiTVEdit:Submit, NoHide
+    if (!TVEditBranchNameEdit) {
         MsgBox, 必须填写[名称]
         return
-    }   
-    branch := jsonTreeKV[branchId]
-    branch.name := EditBranchName
-    if (EditBranchExec)
-        branch.exec := EditBranchExec
+    }
+    branch := jsonTreeKV[TVEditBranchId]
+    branch.name := TVEditBranchNameEdit
+    if (TVEditBranchExecEdit)
+        branch.exec := TVEditBranchExecEdit
     else
         branch.delete("exec")
-    if (EditBranchCmd)
-        branch.cmd := EditBranchCmd
+    if (TVEditBranchCmdEdit)
+        branch.cmd := TVEditBranchCmdEdit
     else
         branch.delete("cmd")    
-    Gui, EditBranchItem:Destroy
-    Gui, JsonTreeView:Default
+    Gui, GuiTVEdit:Destroy
+    Gui, GuiJsonTV:Default
     if (branch.cmd)
-        TV_Modify(branchId, "-Bold Icon1", branch.name " - " branch.cmd)
+        TV_Modify(TVEditBranchId, "-Bold Icon1", branch.name " - " branch.cmd)
     else
-        TV_Modify(branchId, "Bold Icon2", branch.name)
+        TV_Modify(TVEditBranchId, "Bold Icon2", branch.name)
     jsonTreeModifyFlag := true
-return
-TVEditCancel:
-    Gui, EditBranchItem:Destroy
-    Gui, JsonTreeView:Default
-return
+}
+TVEditCancelHandler(CtrlHwnd, GuiEvent, EventInfo) {
+    Gui, GuiTVEdit:Destroy
+    Gui, GuiJsonTV:Default
+}
 ;========================= 树菜单->编辑 =========================
-
-;========================= 树菜单->保存 =========================
-TVSave:
-    if (jsonTreeModifyFlag) {
-        jsonTreeStr := JSON.Dump(jsonTree)
-        FileDelete, %jsonFilePath%
-        FileAppend, %jsonTreeStr%, %jsonFilePath%
-        LoadJsonConf()
-        MsgBox, 保存成功
-        jsonTreeModifyFlag := false
-    } else {
-        MsgBox, 未修改不保存
-    }
-return
-;========================= 树菜单->保存 =========================
 
 
 ;========================= 树菜单->删除 =========================
-TVDelete:
-	deleteTip := ""
+TVDelete(ItemName, ItemPos, MenuName) {
+    Gui, GuiJsonTV:Default
+	deleteTipStr := ""
 	checkBranchIds := Object()
 	checkBranchId = 0
 	Loop
 	{
 		checkBranchId := TV_GetNext(checkBranchId, "Checked")
-		if not checkBranchId
+		if (!checkBranchId)
 			break
         if (checkBranchId == rootBranchId) {
             MsgBox, root项不能删除
@@ -339,19 +326,18 @@ TVDelete:
         checkBranchIds.Push(checkBranchId)
         checkBranch := jsonTreeKV[checkBranchId]
         if (checkBranch.children) {
-            MsgBox, % "要删除[ " . checkBranch.name . " ]节点, 请先删除其所有子节点"
+            MsgBox, % "要删除[ " checkBranch.name " ]节点, 请先删除其下所有子节点"
             return
         }
-		deleteTip .= "  " checkBranch.name "`n"
+		deleteTipStr .= "  " checkBranch.name "`n"
 	}
     if (!checkBranchIds.Length()) {
         MsgBox, 请勾选要删除的项目
         return
     }
-	MsgBox, 1, 删除, 是否要删除勾选项以及其下所有子项?`n`n%deleteTip%
+	MsgBox, 1, 删除, 是否要删除勾选项以及其下所有子项?`n`n%deleteTipStr%
 	IfMsgBox OK
 	{
-        Gui, JsonTreeView:Default
         for index, checkBranchId in checkBranchIds {
             parentBranchId := TV_GetParent(checkBranchId)
             parentBranch := jsonTreeKV[parentBranchId]
@@ -368,12 +354,13 @@ TVDelete:
         }
         jsonTreeModifyFlag := true
 	}
-return
+}
 ;========================= 树菜单->删除 =========================
 
 
 ;========================= 树菜单->上移 =========================
-TVUp:
+TVUp(ItemName, ItemPos, MenuName) {
+    Gui, GuiJsonTV:Default
 	upBranchId := TV_GetSelection()
     if (!upBranchId || upBranchId == rootBranchId)
         return
@@ -398,19 +385,19 @@ TVUp:
 
     upBranchLevelNames := Object()
     TVExpandLevelBefore(upBranchLevelNames, upBranchParent)
-    Gui, JsonTreeView:Default
     TV_Delete()
     jsonTreeKV := Object()
     jsonTreeCmdCount := 0
     TVParse(0, jsonTree)
     TVExpandLevelAfter(upBranchLevelNames, jsonTree, 1)
     jsonTreeModifyFlag := true
-return
+}
 ;========================= 树菜单->上移 =========================
 
 
 ;========================= 树菜单->下移 =========================
-TVDown:
+TVDown(ItemName, ItemPos, MenuName) {
+    Gui, GuiJsonTV:Default
 	downBranchId := TV_GetSelection()
     if (!downBranchId || downBranchId == rootBranchId)
         return
@@ -436,18 +423,30 @@ TVDown:
 
     downBranchLevelNames := Object()
     TVExpandLevelBefore(downBranchLevelNames, downBranchParent)
-    Gui, JsonTreeView:Default
     TV_Delete()
     jsonTreeKV := Object()
     jsonTreeCmdCount := 0
     TVParse(0, jsonTree)
     TVExpandLevelAfter(downBranchLevelNames, jsonTree, 1)
     jsonTreeModifyFlag := true
-return
+}
 ;========================= 树菜单->下移 =========================
 
 
-
+;========================= 树菜单->保存 =========================
+TVSave(ItemName, ItemPos, MenuName) {
+    if (jsonTreeModifyFlag) {
+        jsonTreeStr := JSON.Dump(jsonTree)
+        FileDelete, %jsonFilePath%
+        FileAppend, %jsonTreeStr%, %jsonFilePath%
+        LoadJsonConf()
+        MsgBox, 保存成功
+        jsonTreeModifyFlag := false
+    } else {
+        MsgBox, 未修改不保存
+    }
+}
+;========================= 树菜单->保存 =========================
 
 
 
@@ -455,7 +454,11 @@ return
 
 
 ;========================= 输入Bar =========================
-GuiInputCmdBar:
+global InputCmdBarHwnd := "inputCmdBar"
+global InputCmdBarExist := true
+global InputCmd :=
+global InputCmdLV :=
+GuiInputCmdBar(ItemName, ItemPos, MenuName) {
     if (InputCmdBarExist) {
         Gui, InputCmdBar:Submit, NoHide
         InputCmdLastValue := InputCmd
@@ -464,9 +467,6 @@ GuiInputCmdBar:
         return
     }
     InputCmdMode := "inputBar"
-    global InputCmdBarHwnd := "inputCmdBar"
-    global InputCmdBarExist := true
-    
     themeConf := themeConfs[themeConfType]
     if (themeConfType == "auto") {
         RegRead, wallpaperPath, HKEY_CURRENT_USER\Control Panel\Desktop, WallPaper
@@ -505,7 +505,7 @@ GuiInputCmdBar:
     Gui, InputCmdBar:Add, Edit, w450 h38 vInputCmd gInputCmdEditHandler, %InputCmdLastValue%
     Gui, InputCmdBar:Font, s10 -w, Microsoft YaHei
     Gui, InputCmdBar:Add, ListView, AltSubmit -Hdr -Multi ReadOnly Hidden LV0x8000 w450 r9 vInputCmdLV gInputCmdLVHandler, cmd|name
-    Gui, InputCmdBar:Add, Button, Default w0 h0 Hidden vButton gInputCmdSubmit
+    Gui, InputCmdBar:Add, Button, Default w0 h0 Hidden gInputCmdSubmitHandler
     guiX := 10
     guiY := A_ScreenHeight - 500
     Winset, Transparent, 240
@@ -517,9 +517,9 @@ GuiInputCmdBar:
     LV_ModifyCol(2, 250)
     if (themeConfType == "blur")
         EnableBlur(InputCmdBarHwnd)
-return
+}
 
-InputCmdSubmit(CtrlHwnd, GuiEvent, EventInfo) {
+InputCmdSubmitHandler(CtrlHwnd, GuiEvent, EventInfo) {
     Gui, InputCmdBar:Submit, NoHide
     Gui, InputCmdBar:Default
     GuiControlGet, focusedControl, FocusV
@@ -576,7 +576,7 @@ InputCmdEditHandler(CtrlHwnd, GuiEvent, EventInfo) {
 }
 InputCmdLVHandler(CtrlHwnd, GuiEvent, EventInfo) {
 	if (GuiEvent == "DoubleClick") {
-        InputCmdSubmit(CtrlHwnd, GuiEvent, EventInfo)
+        InputCmdSubmitHandler(CtrlHwnd, GuiEvent, EventInfo)
 	} else if (GuiEvent == "K") {
         if (EventInfo == 32) {  ;空格键切换回输入框继续编辑
             Gui, InputCmdBar:Default
@@ -588,77 +588,84 @@ InputCmdLVHandler(CtrlHwnd, GuiEvent, EventInfo) {
     }
 }
 
+
 #If WinActive(A_ScriptName) and WinActive("ahk_class AutoHotkeyGUI")
-    ~Up::
-        Gui, InputCmdBar:Default
-        GuiControlGet, focusedControl, FocusV
-        if (focusedControl == "InputCmd") {
-            if (LV_GetCount()) {
-                GuiControl, InputCmdBar:Focus, InputCmdLV
-                Send, ^{End}
-            }
-        } else if (focusedControl == "InputCmdLV") {
-            rowNum := LV_GetNext(0, "Focused")
-            if (rowNum == 1) {
-                LV_Modify(1, "-Focus -Select")
-                GuiControl, Focus, InputCmd
-            }
-        }
-    return
-    ~Down::
-        Gui, InputCmdBar:Default
-        GuiControlGet, focusedControl, FocusV
-        if (focusedControl == "InputCmd") {
-            if (LV_GetCount()) {
-                GuiControl, InputCmdBar:Focus, InputCmdLV
-                Send, ^{Home}
-            }
-        } else if (focusedControl == "InputCmdLV") {
-            rowNum := LV_GetNext(0, "Focused")
-            if (rowNum == LV_GetCount()) {
-                LV_Modify(rowNum, "-Focus -Select")
-                GuiControl, Focus, InputCmd
-            }
-        }
-    return
-    F1::
-        gosub, GuiTV
-    return
+    ~Up::InputCmdBarKeyUp()
+    ~Down::InputCmdBarKeyDown()
+    F1::GuiTV("", "", "")
 #If
+InputCmdBarKeyUp() {
+    Gui, InputCmdBar:Default
+    GuiControlGet, focusedControl, FocusV
+    if (focusedControl == "InputCmd") {
+        if (LV_GetCount()) {
+            GuiControl, InputCmdBar:Focus, InputCmdLV
+            Send, ^{End}
+        }
+    } else if (focusedControl == "InputCmdLV") {
+        rowNum := LV_GetNext(0, "Focused")
+        if (rowNum == 1) {
+            LV_Modify(1, "-Focus -Select")
+            GuiControl, Focus, InputCmd
+        }
+    }
+}
+InputCmdBarKeyDown() {
+    Gui, InputCmdBar:Default
+    GuiControlGet, focusedControl, FocusV
+    if (focusedControl == "InputCmd") {
+        if (LV_GetCount()) {
+            GuiControl, InputCmdBar:Focus, InputCmdLV
+            Send, ^{Home}
+        }
+    } else if (focusedControl == "InputCmdLV") {
+        rowNum := LV_GetNext(0, "Focused")
+        if (rowNum == LV_GetCount()) {
+            LV_Modify(rowNum, "-Focus -Select")
+            GuiControl, Focus, InputCmd
+        }
+    }
+}
 ;========================= 输入Bar =========================
-
-
-MenuTrayReload:
-    Reload
-return
-
-MenuTrayExit:
-    gosub, InputCmdBarGuiEscape
-    gosub, TVExit
-    ExitApp
-return
-
-MenuTrayLocation:
-    Run, % "explorer /select," A_ScriptFullPath
-return
-
-TVExit:
-	if (jsonTreeModifyFlag) {
-		MsgBox, 51, 关闭, 命令已修改，是否保存后再退出？
-		IfMsgBox Yes
-            gosub, TVSave
-	}
-    Gui, JsonTreeView:Destroy
-return
-
-JsonTreeViewGuiClose:
-    gosub, TVExit
-return
 
 
 
 
 ;========================= 公共函数 =========================
+MenuTray() {
+	Menu, Tray, NoStandard
+    Menu, Tray, add, 修改菜单, GuiTV
+	Menu, Tray, add, 命令输入, GuiInputCmdBar
+	Menu, Tray, add, 定位文件, MenuTrayLocation
+	Menu, Tray, add
+	Menu, Tray, add, 重启, MenuTrayReload
+	Menu, Tray, add, 退出, MenuTrayExit
+    Menu, Tray, Default, 修改菜单
+}
+
+MenuTrayReload(ItemName, ItemPos, MenuName) {
+    Reload    
+}
+MenuTrayExit(ItemName, ItemPos, MenuName) {
+    gosub, InputCmdBarGuiEscape
+    TVExit()
+    ExitApp
+}
+MenuTrayLocation(ItemName, ItemPos, MenuName) {
+    Run, % "explorer /select," A_ScriptFullPath
+}
+TVExit() {
+	if (jsonTreeModifyFlag) {
+		MsgBox, 51, 关闭, 命令已修改，是否保存后再退出？
+		IfMsgBox Yes
+            TVSave("", "", "")
+	}
+    Gui, GuiJsonTV:Destroy
+}
+GuiJsonTVGuiClose(GuiHwnd) {
+    TVExit()
+}
+
 LoadJsonConf() {
     FileEncoding, UTF-8
     global jsonFilePath := A_ScriptDir "\contextCmd.json"
@@ -760,20 +767,17 @@ SaveConf() {
 
 InputCmdExec(inputCmd) {
     WinGet, inputCmdCurWinId, ID, A
-    inputCmd := LTrim(inputCmd)
-    inputCmdSpacePos := InStr(inputCmd, " ", false)
-    if (inputCmdSpacePos) {
-        inputCmdKey := SubStr(inputCmd, 1, inputCmdSpacePos-1)
-        inputCmdValue := LTrim(SubStr(inputCmd, inputCmdSpacePos))
-        
-        inputCmdSpacePos2 := InStr(inputCmdValue, " ", false)
-        if (inputCmdSpacePos2) {
-            inputCmdValueExtra := LTrim(SubStr(inputCmdValue, inputCmdSpacePos2))
-            inputCmdValue := SubStr(inputCmdValue, 1, inputCmdSpacePos2-1)
-        }
-    } else {
+    inputCmd := RegExReplace(Trim(inputCmd), "\s+", " ")      ;去除首位空格, 将字符串内多个连续空格替换为单个空格
+    inputCmdArray := StrSplit(inputCmd, A_Space)
+    inputCmdArrayLen := inputCmdArray.Length()
+    if (inputCmdArrayLen == 1) {
         ExecNativeCmd(inputCmd, inputCmdKey, inputCmdValue)
         return
+    } else if (inputCmdArrayLen >= 2) {
+        inputCmdKey := inputCmdArray[1]
+        inputCmdValue := inputCmdArray[2]
+        if (inputCmdArrayLen == 3)
+            inputCmdValueExtra := inputCmdArray[3]
     }
     if (!inputCmdKey)
         return
@@ -798,10 +802,8 @@ InputCmdExec(inputCmd) {
         return
     
     if (inputCmdKey == "g") {
-        StringGetPos, execFlag, exec, execLang=, L1
-        if (ErrorLevel) {
-            run, %exec%
-        } else {
+        execFlag := InStr(exec, "execLang=", true)
+        if (execFlag) {
             execLangPath := execLangPathBase "\" inputCmdKey "_" cmd ".bat"
             FileDelete, %execLangPath%
             FileEncoding
@@ -810,8 +812,9 @@ InputCmdExec(inputCmd) {
                 run, %execLangPath% %inputCmdValueExtra%
             else
                 run, %execLangPath%
+        } else {
+            run, %exec%
         }
-        
     } else if (inputCmdKey == "get") {
         StringLen, needBackKeyCount, inputCmd
         needBackKeyCount += 2  ;``符号也需要计算在退格值内，自加2
@@ -826,16 +829,8 @@ InputCmdExec(inputCmd) {
             cuteWord := GetCuteWord()
             StringReplace, exec, exec, $cuteWord$, %cuteWord%, All
         }
-        StringGetPos, execFlag, exec, execLang=, L1
-        if (ErrorLevel) {
-            Clipboard := exec
-            if (InputCmdMode == "hotkey") {
-                if (isWinChanged)
-                    SendInput, ^v
-                else
-                    SendInput, {backspace %needBackKeyCount%}^v
-            }
-        } else {
+        execFlag := InStr(exec, "execLang=", true)
+        if (execFlag) {
             execLangPath := execLangPathBase "\" inputCmdKey "_" cmd ".bat"
             FileDelete, %execLangPath%
             FileEncoding
@@ -847,32 +842,40 @@ InputCmdExec(inputCmd) {
                 else
                     SendInput, {backspace %needBackKeyCount%}^v
             }
+        } else {
+            Clipboard := exec
+            if (InputCmdMode == "hotkey") {
+                if (isWinChanged)
+                    SendInput, ^v
+                else
+                    SendInput, {backspace %needBackKeyCount%}^v
+            }
         }
         InputCmdMode :=
         
     } else if (inputCmdKey == "do") {
-        StringGetPos, execFlag, exec, execLang=, L1
-        if (ErrorLevel) {
-            run, %exec%
-        } else {
+        execFlag := InStr(exec, "execLang=", true)
+        if (execFlag) {
             execLangPath := execLangPathBase "\" inputCmdKey "_" cmd ".bat"
             FileDelete, %execLangPath%
             FileEncoding
             FileAppend, %exec%, %execLangPath%
             run, %execLangPath% %inputCmdValueExtra%
+        } else {
+            run, %exec%
         }
         
     } else if (inputCmdKey == "q") {
-        StringGetPos, execFlag, exec, execLang=, L1
-        if (ErrorLevel) {
-            exec := "tencent://message/?uin=" exec
-            run, %exec%
-        } else {
+        execFlag := InStr(exec, "execLang=", true)
+        if (execFlag) {
             execLangPath := execLangPathBase "\" inputCmdKey "_" cmd ".bat"
             FileDelete, %execLangPath%
             FileEncoding
             FileAppend, %exec%, %execLangPath%
             run, %execLangPath% %inputCmdValueExtra%
+        } else {
+            exec := "tencent://message/?uin=" exec
+            run, %exec%
         }
     }
 }
@@ -911,17 +914,6 @@ TVParse(parentId, branch) {
     branch.branchId := branchId
     jsonTreeKV[branchId] := branch
 }
-
-
-Tip(msg) {
-	ToolTip, %msg%, %A_CaretX%,  %A_CaretY%
-    SetTimer, TipRemove, 2000
-}
-TipRemove:
-    SetTimer, TipRemove, Off
-    ToolTip
-return
-
 
 WM_LBUTTONDOWN(wParam, lParam, msg, hWnd) {
     if (hWnd = %InputCmdBarHwnd%)

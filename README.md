@@ -41,9 +41,8 @@
 3. 增加菜单判断命令是否已经存在
 4. label方式调用，导致global变量太多过于混乱，修改为函数调用。注意:Gui, AddBranchItem:Add, Text, x+5 yp-3 w400 vAddBranchParent, %parentBranchName%。vAddBranchParent必须为global类型
 5. inputCmdBar窗口大小目前写死, 使用变量定制
-6. 将公共变量集中定义
-7. 为命令添加权重，被使用次数越多的命令拍的更加靠前
-8. 数据存储到sqlite
+6. 为命令添加权重，被使用次数越多的命令拍的更加靠前
+7. 数据存储到sqlite
 
 
 
