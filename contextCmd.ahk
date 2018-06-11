@@ -20,15 +20,9 @@
 ;     会将此文本框文本保存到bat文件, 并执行该bat
 ;TODO
 ;  1.添加命令时判断是否重复
-;  2.exec中加入execLang= 设定编程语言, 目前写死bat, 后续动态
-;  3.增加菜单搜索命令
-;  3.增加菜单判断命令是否已经存在
-;  4.label方式调用，导致global变量太多过于混乱，修改为函数调用
-;      注意:Gui, GuiTVAdd:Add, Text, x+5 yp-3 w400 vAddBranchParent, %parentBranchName%
-;           vAddBranchParent必须为global类型
-;   5.inputCmdBar窗口大小目前写死, 使用变量定制
-;   6.为命令添加权重，被使用次数越多的命令拍的更加靠前
-;   7.数据存储到sqlite
+;  2.增加菜单搜索命令
+;  3.为命令添加权重，被使用次数越多的命令拍的更加靠前
+;  4.数据存储到sqlite
 ;========================= 环境配置 =========================
 #Persistent
 #NoEnv
@@ -68,25 +62,27 @@ MenuTray()
 
 
 ;========================= 配置热键 =========================
-global InputCmd :=
+MButton::   GuiInputCmdBar("", "", "")
+#R::        GuiInputCmdBar("", "", "")
+~RControl:: HotKeyConfControl()
+~`::        HotKeyConfWave()
+
+
 global InputCmdMode :=
 global InputCmdLastValue :=
-MButton::
-#R::
-    GuiInputCmdBar("", "", "")
-return
-~RControl::
-	(Count < 1 && A_TimeSincePriorHotkey > 80 && A_TimeSincePriorHotkey < 400 && A_PriorHotkey = A_ThisHotkey) ? Count ++ : (Count := 0)
-	if (Count > 0)
+global HotKeyControlCount := 0
+HotKeyConfControl() {
+	(HotKeyControlCount < 1 && A_TimeSincePriorHotkey > 80 && A_TimeSincePriorHotkey < 400 && A_PriorHotkey = A_ThisHotkey) ? HotKeyControlCount ++ : (HotKeyControlCount := 0)
+	if (HotKeyControlCount > 0)
         GuiInputCmdBar("", "", "")
-return
-~`::
-    Input, InputCmd, V T10, {vkC0},
-    if (!InputCmd)
+}
+HotKeyConfWave() {
+    Input, inputCmd, V T10, {vkC0},
+    if (!inputCmd)
         return
     InputCmdMode := "hotkey"
-    InputCmdExec(InputCmd)
-return
+    InputCmdExec(inputCmd)
+}
 ;========================= 配置热键 =========================
 
 
@@ -97,31 +93,31 @@ global jsonTreeModifyFlag := false
 global jsonTreeCmdCount := 0
 global JsonTreeView := 0
 GuiTV(ItemName, ItemPos, MenuName) {
-    tvImageList := IL_Create(5)
-    IL_Add(tvImageList, "shell32.dll", 74)
-    IL_Add(tvImageList, "shell32.dll", 4)
-    IL_Add(tvImageList, "shell32.dll", 135)
+    imageList := IL_Create(5)
+    IL_Add(imageList, "shell32.dll", 74)
+    IL_Add(imageList, "shell32.dll", 4)
+    IL_Add(imageList, "shell32.dll", 135)
     Gui, GuiJsonTV:New
     Gui, GuiJsonTV:Font,, Microsoft YaHei
-    Gui, GuiJsonTV:Add, TreeView, vJsonTreeView w450 r30 Readonly AltSubmit Checked HScroll hwndHTV gTVHandler ImageList%tvImageList%
+    Gui, GuiJsonTV:Add, TreeView, vJsonTreeView w450 r30 Readonly AltSubmit Checked HScroll hwndHTV gTVHandler ImageList%imageList%
     GuiControl, GuiJsonTV:-Redraw, JsonTreeView
     TVParse(0, jsonTree)
     GuiControl, GuiJsonTV:+Redraw, JsonTreeView
     Gui, GuiJsonTV:Add, StatusBar
     
-    Menu, JsonTreeMenu, Add, 添加, TVAdd
-    Menu, JsonTreeMenu, Icon, 添加, SHELL32.dll, 1
-    Menu, JsonTreeMenu, Add, 保存, TVSave
-    Menu, JsonTreeMenu, Icon, 保存, SHELL32.dll, 259
-    Menu, JsonTreeMenu, Add, 编辑, TVEdit
-    Menu, JsonTreeMenu, Icon, 编辑, SHELL32.dll, 134
-    Menu, JsonTreeMenu, Add, 删除, TVDelete
-    Menu, JsonTreeMenu, Icon, 删除, SHELL32.dll, 132
-    Menu, JsonTreeMenu, Add, 上移, TVUp
-    Menu, JsonTreeMenu, Icon, 上移, SHELL32.dll, 247
-    Menu, JsonTreeMenu, Add, 下移, TVDown
-    Menu, JsonTreeMenu, Icon, 下移, SHELL32.dll, 248
-    Gui, Menu, JsonTreeMenu
+    Menu, JsonTVMenu, Add, 添加, TVAdd
+    Menu, JsonTVMenu, Icon, 添加, SHELL32.dll, 1
+    Menu, JsonTVMenu, Add, 保存, TVSave
+    Menu, JsonTVMenu, Icon, 保存, SHELL32.dll, 259
+    Menu, JsonTVMenu, Add, 编辑, TVEdit
+    Menu, JsonTVMenu, Icon, 编辑, SHELL32.dll, 134
+    Menu, JsonTVMenu, Add, 删除, TVDelete
+    Menu, JsonTVMenu, Icon, 删除, SHELL32.dll, 132
+    Menu, JsonTVMenu, Add, 上移, TVUp
+    Menu, JsonTVMenu, Icon, 上移, SHELL32.dll, 247
+    Menu, JsonTVMenu, Add, 下移, TVDown
+    Menu, JsonTVMenu, Icon, 下移, SHELL32.dll, 248
+    Gui, Menu, JsonTVMenu
     Gui, GuiJsonTV:Show, , 命令树管理
     SB_SetText("总计" jsonTreeCmdCount "条命令")
 }
@@ -450,59 +446,29 @@ TVSave(ItemName, ItemPos, MenuName) {
 
 
 
-
-
-
 ;========================= 输入Bar =========================
 global InputCmdBarHwnd := "inputCmdBar"
-global InputCmdBarExist := true
-global InputCmd :=
+global InputCmdBarExist := false
+global InputCmdEdit :=
 global InputCmdLV :=
 GuiInputCmdBar(ItemName, ItemPos, MenuName) {
     if (InputCmdBarExist) {
+        Gui, InputCmdBar:Default
         Gui, InputCmdBar:Submit, NoHide
-        InputCmdLastValue := InputCmd
+        InputCmdLastValue := InputCmdEdit
         Gui, InputCmdBar:Hide
         InputCmdBarExist := false
         return
     }
+    InputCmdBarExist := true
     InputCmdMode := "inputBar"
-    themeConf := themeConfs[themeConfType]
-    if (themeConfType == "auto") {
-        RegRead, wallpaperPath, HKEY_CURRENT_USER\Control Panel\Desktop, WallPaper
-        FileGetTime, wallpaperTimeStamp , %wallpaperPath%, M
-        if (wallpaperPath != confs.LastWallpaperPath || wallpaperTimeStamp != confs.LastWallpaperTimeStamp) {
-            wallpaperHex := ImgGetDominantColor(wallpaperPath)
-            confs.LastWallpaperPath := wallpaperPath
-            confs.LastWallpaperTimeStamp := wallpaperTimeStamp
-            confs.LastWallpaperColor := wallpaperHex
-            SaveConf()
-            themeBgColor := wallpaperHex
-        } else {
-            themeBgColor := confs.LastWallpaperColor
-        }
-        themeFontColor := themeConf.fontColor
-        themeX := themeY :=
-    } else if (themeConfType == "blur") {
-        themeBgColor := themeConf.bgColor
-        themeFontColor := themeConf.fontColor
-        themeX := themeConf.x
-        themeY := themeConf.y
-    } else if (themeConfType == "custom") {
-        Random, themeConfCustomIndex, themeConf.MinIndex(), themeConf.MaxIndex()
-        themeConfCustom := themeConf[themeConfCustomIndex]
-        themeBgColor := themeConfCustom.bgColor
-        themeFontColor := themeConfCustom.fontColor
-        themeX := themeY :=
-    } else {
-        return
-    }
     OnMessage(0x0201, "WM_LBUTTONDOWN")
+    InputCmdBarThemeConf(themeBgColor, themeFontColor, themeX, themeY) 
     Gui, InputCmdBar:New, +LastFound -Caption -Border +AlwaysOnTop +hWnd%InputCmdBarHwnd%
     Gui, InputCmdBar:Margin, 5, 5
     Gui, InputCmdBar:Color, %themeBgColor%, %themeBgColor%
     Gui, InputCmdBar:Font, c%themeFontColor% s16 wbold, Microsoft YaHei
-    Gui, InputCmdBar:Add, Edit, w450 h38 vInputCmd gInputCmdEditHandler, %InputCmdLastValue%
+    Gui, InputCmdBar:Add, Edit, w450 h38 vInputCmdEdit gInputCmdEditHandler, %InputCmdLastValue%
     Gui, InputCmdBar:Font, s10 -w, Microsoft YaHei
     Gui, InputCmdBar:Add, ListView, AltSubmit -Hdr -Multi ReadOnly Hidden LV0x8000 w450 r9 vInputCmdLV gInputCmdLVHandler, cmd|name
     Gui, InputCmdBar:Add, Button, Default w0 h0 Hidden gInputCmdSubmitHandler
@@ -520,26 +486,27 @@ GuiInputCmdBar(ItemName, ItemPos, MenuName) {
 }
 
 InputCmdSubmitHandler(CtrlHwnd, GuiEvent, EventInfo) {
-    Gui, InputCmdBar:Submit, NoHide
     Gui, InputCmdBar:Default
+    Gui, InputCmdBar:Submit, NoHide
     GuiControlGet, focusedControl, FocusV
-    if (focusedControl == "InputCmd") {
+    if (focusedControl == "InputCmdEdit") {
+        inputCmd := InputCmdEdit
     } else if (focusedControl == "InputCmdLV") {
         rowNum := LV_GetNext(0, "Focused")
         if (!rowNum)
             return
-        LV_GetText(InputCmd, rowNum, 1)
-        ;GuiControl,, InputCmd, %InputCmd%
+        LV_GetText(inputCmd, rowNum, 1)
+        ;GuiControl,, InputCmdEdit, %inputCmd%
     }
     Gui, InputCmdBar:Hide
-    InputCmdLastValue := InputCmd
-    InputCmdExec(InputCmd)
+    InputCmdLastValue := inputCmd
+    InputCmdExec(inputCmd)
 }
 
 InputCmdBarGuiEscape:
     Gui, InputCmdBar:Submit, NoHide
-    if (InputCmd)
-        InputCmdLastValue := InputCmd
+    if (InputCmdEdit)
+        InputCmdLastValue := InputCmdEdit
     Gui, InputCmdBar:Hide
     InputCmdBarExist := false
 return
@@ -549,24 +516,26 @@ InputCmdEditHandler(CtrlHwnd, GuiEvent, EventInfo) {
     Gui, InputCmdBar:Show, h48
     GuiControl, InputCmdBar:Hide, InputCmdLV
     LV_Delete()
-    InputCmd := LTrim(InputCmd)
-    inputCmdSpacePos := InStr(InputCmd, " ", false)
-    if (inputCmdSpacePos) {
-        inputCmdKey := SubStr(InputCmd, 1, inputCmdSpacePos-1)
+    inputCmd := RegExReplace(Trim(InputCmdEdit), "\s+", " ")      ;去除首位空格, 将字符串内多个连续空格替换为单个空格
+    inputCmdArray := StrSplit(inputCmd, A_Space)
+    inputCmdArrayLen := inputCmdArray.Length()
+    if (inputCmdArrayLen == 1) {
+        ;在path命令中进行匹配
+        for fileName, fileDesc in jsonCmdPath {
+            if (RegExMatch(fileName, "i)^" inputCmd))
+                LV_Add(, fileName, fileDesc)
+        }
+    } else if (inputCmdArrayLen >= 2) {
+        inputCmdKey := inputCmdArray[1]
         if (inputCmdKey not in g,get,do,q)
             return
         topChildCmds := jsonCmdTree[inputCmdKey]
         if (!topChildCmds)
             return
-        inputCmdValue := LTrim(SubStr(InputCmd, inputCmdSpacePos))
+        inputCmdValue := inputCmdArray[2]
         for cmdKey, branchId in topChildCmds {
             if (RegExMatch(cmdKey, "i)^" inputCmdValue))
                 LV_Add(, inputCmdKey " " cmdKey, jsonCmdTreeKV[branchId].name)
-        }
-    } else {
-        for fileName, fileDesc in jsonCmdPath {
-            if (RegExMatch(fileName, "i)^" InputCmd))
-                LV_Add(, fileName, fileDesc)
         }
     }
     if (LV_GetCount()) {
@@ -583,21 +552,21 @@ InputCmdLVHandler(CtrlHwnd, GuiEvent, EventInfo) {
             rowNum := LV_GetNext(0, "Focused")
             if (rowNum)
                 LV_Modify(rowNum, "-Focus -Select")
-            GuiControl, Focus, InputCmd
+            GuiControl, Focus, InputCmdEdit
         }
     }
 }
 
 
 #If WinActive(A_ScriptName) and WinActive("ahk_class AutoHotkeyGUI")
-    ~Up::InputCmdBarKeyUp()
-    ~Down::InputCmdBarKeyDown()
-    F1::GuiTV("", "", "")
+    ~Up::   InputCmdBarKeyUp()
+    ~Down:: InputCmdBarKeyDown()
+    F1::    GuiTV("", "", "")
 #If
 InputCmdBarKeyUp() {
     Gui, InputCmdBar:Default
     GuiControlGet, focusedControl, FocusV
-    if (focusedControl == "InputCmd") {
+    if (focusedControl == "InputCmdEdit") {
         if (LV_GetCount()) {
             GuiControl, InputCmdBar:Focus, InputCmdLV
             Send, ^{End}
@@ -606,14 +575,14 @@ InputCmdBarKeyUp() {
         rowNum := LV_GetNext(0, "Focused")
         if (rowNum == 1) {
             LV_Modify(1, "-Focus -Select")
-            GuiControl, Focus, InputCmd
+            ;GuiControl, Focus, InputCmdEdit
         }
     }
 }
 InputCmdBarKeyDown() {
     Gui, InputCmdBar:Default
     GuiControlGet, focusedControl, FocusV
-    if (focusedControl == "InputCmd") {
+    if (focusedControl == "InputCmdEdit") {
         if (LV_GetCount()) {
             GuiControl, InputCmdBar:Focus, InputCmdLV
             Send, ^{Home}
@@ -622,7 +591,7 @@ InputCmdBarKeyDown() {
         rowNum := LV_GetNext(0, "Focused")
         if (rowNum == LV_GetCount()) {
             LV_Modify(rowNum, "-Focus -Select")
-            GuiControl, Focus, InputCmd
+            GuiControl, Focus, InputCmdEdit
         }
     }
 }
@@ -670,7 +639,7 @@ LoadJsonConf() {
     FileEncoding, UTF-8
     global jsonFilePath := A_ScriptDir "\contextCmd.json"
     jsonFile := FileOpen(jsonFilePath, "r")
-    if !IsObject(jsonFile)
+    if (!IsObject(jsonFile))
         throw Exception("Can't access file for JSONFile instance: " jsonFile, -1)
     try {
         jsonTree := JSON.Load(jsonFile.Read())
@@ -727,12 +696,11 @@ LoadCmdPathConf() {
                     fileDesc := FileGetDesc(filePath)
                 } else if (fileExt == "bat") {
                     file := FileOpen(filePath, "r")
-                    fileContent := file.Read()
-                    RegExMatch(fileContent, "OU)title\s.*\s", fileDescMatch)
-                    fileDesc := fileDescMatch.value
-                    fileDesc := StrReplace(fileDesc, "title ")
-                    fileDesc := StrReplace(fileDesc, "&")
-                    jsonFile.Close()
+                    RegExMatch(file.Read(), "U)title\s.*\s", fileDesc)
+                    fileDesc := StrReplace(StrReplace(fileDesc, "title "), "&")
+                    file.Close()
+                } else if (fileExt == "vbs") {
+                    fileDesc := fileName
                 } else {
                     continue
                 }
@@ -764,6 +732,39 @@ SaveConf() {
     FileDelete, %confsFilePath%
     FileAppend, %confsStr%, %confsFilePath%
 }
+
+
+InputCmdBarThemeConf(ByRef themeBgColor, ByRef themeFontColor, ByRef themeX, ByRef themeY) {
+    themeConf := themeConfs[themeConfType]
+    if (themeConfType == "auto") {
+        RegRead, wallpaperPath, HKEY_CURRENT_USER\Control Panel\Desktop, WallPaper
+        FileGetTime, wallpaperTimeStamp , %wallpaperPath%, M
+        if (wallpaperPath != confs.LastWallpaperPath || wallpaperTimeStamp != confs.LastWallpaperTimeStamp) {
+            wallpaperHex := ImgGetDominantColor(wallpaperPath)
+            confs.LastWallpaperPath := wallpaperPath
+            confs.LastWallpaperTimeStamp := wallpaperTimeStamp
+            confs.LastWallpaperColor := wallpaperHex
+            SaveConf()
+            themeBgColor := wallpaperHex
+        } else {
+            themeBgColor := confs.LastWallpaperColor
+        }
+        themeFontColor := themeConf.fontColor
+        themeX := themeY :=
+    } else if (themeConfType == "blur") {
+        themeBgColor := themeConf.bgColor
+        themeFontColor := themeConf.fontColor
+        themeX := themeConf.x
+        themeY := themeConf.y
+    } else if (themeConfType == "custom") {
+        Random, themeConfCustomIndex, themeConf.MinIndex(), themeConf.MaxIndex()
+        themeConfCustom := themeConf[themeConfCustomIndex]
+        themeBgColor := themeConfCustom.bgColor
+        themeFontColor := themeConfCustom.fontColor
+        themeX := themeY :=
+    }
+}
+
 
 InputCmdExec(inputCmd) {
     WinGet, inputCmdCurWinId, ID, A
@@ -800,14 +801,18 @@ InputCmdExec(inputCmd) {
     exec := cmdBranch.exec
     if (!exec)
         return
+    execLangFlag := InStr(exec, "execLang=", true)
+    if (execLangFlag) {
+        RegExMatch(exec, "U)execLang=.*`r`n", execLang)
+        execLang := StrReplace(StrReplace(execLang, "execLang="), "`r`n")
+        execLangPath := execLangPathBase "\" inputCmdKey "_" cmd "." execLang
+        FileDelete, %execLangPath%
+        FileEncoding
+        FileAppend, %exec%, %execLangPath%
+    }
     
     if (inputCmdKey == "g") {
-        execFlag := InStr(exec, "execLang=", true)
-        if (execFlag) {
-            execLangPath := execLangPathBase "\" inputCmdKey "_" cmd ".bat"
-            FileDelete, %execLangPath%
-            FileEncoding
-            FileAppend, %exec%, %execLangPath%
+        if (execLangFlag) {
             if (inputCmdValueExtra)
                 run, %execLangPath% %inputCmdValueExtra%
             else
@@ -816,25 +821,17 @@ InputCmdExec(inputCmd) {
             run, %exec%
         }
     } else if (inputCmdKey == "get") {
-        StringLen, needBackKeyCount, inputCmd
-        needBackKeyCount += 2  ;``符号也需要计算在退格值内，自加2
-        isWinChanged := false
+        needBackKeyCount := StrLen(inputCmd) + 2    ;``符号也需要计算在退格值内，自加2
         WinGet, inputCmdCurWinId2, ID, A  ;窗口发生变化时，在新窗口中不处理退格
-        if (inputCmdCurWinId != inputCmdCurWinId2)
-            isWinChanged := true
-
+        isWinChanged := (inputCmdCurWinId == inputCmdCurWinId2 ? false : true)
+        
         ;常量替换
-        IfInString, exec, $cuteWord$ 
-        {
+        if (InStr(exec, "$cuteWord$", true)) {
             cuteWord := GetCuteWord()
-            StringReplace, exec, exec, $cuteWord$, %cuteWord%, All
+            exec := StrReplace(exec, "$cuteWord$", cuteWord)
         }
-        execFlag := InStr(exec, "execLang=", true)
-        if (execFlag) {
-            execLangPath := execLangPathBase "\" inputCmdKey "_" cmd ".bat"
-            FileDelete, %execLangPath%
-            FileEncoding
-            FileAppend, %exec%, %execLangPath%
+
+        if (execLangFlag) {
             RunWait, %execLangPath% %inputCmdValueExtra%
             if (InputCmdMode == "hotkey") {
                 if (isWinChanged)
@@ -852,26 +849,16 @@ InputCmdExec(inputCmd) {
             }
         }
         InputCmdMode :=
-        
+
     } else if (inputCmdKey == "do") {
-        execFlag := InStr(exec, "execLang=", true)
-        if (execFlag) {
-            execLangPath := execLangPathBase "\" inputCmdKey "_" cmd ".bat"
-            FileDelete, %execLangPath%
-            FileEncoding
-            FileAppend, %exec%, %execLangPath%
+        if (execLangFlag) {
             run, %execLangPath% %inputCmdValueExtra%
         } else {
             run, %exec%
         }
         
     } else if (inputCmdKey == "q") {
-        execFlag := InStr(exec, "execLang=", true)
-        if (execFlag) {
-            execLangPath := execLangPathBase "\" inputCmdKey "_" cmd ".bat"
-            FileDelete, %execLangPath%
-            FileEncoding
-            FileAppend, %exec%, %execLangPath%
+        if (execLangFlag) {
             run, %execLangPath% %inputCmdValueExtra%
         } else {
             exec := "tencent://message/?uin=" exec
