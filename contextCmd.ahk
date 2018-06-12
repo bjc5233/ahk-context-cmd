@@ -21,7 +21,7 @@
 ;TODO
 ;  1.添加命令时判断是否重复
 ;  2.增加菜单搜索命令
-;  3.为命令添加权重，被使用次数越多的命令拍的更加靠前
+;  3.为命令添加权重，被使用次数越多的命令排的更加靠前
 ;  4.数据存储到sqlite
 ;========================= 环境配置 =========================
 #Persistent
@@ -62,19 +62,17 @@ MenuTray()
 
 
 ;========================= 配置热键 =========================
-MButton::   GuiInputCmdBar("", "", "")
-#R::        GuiInputCmdBar("", "", "")
+MButton::   gosub, GuiInputCmdBar
+#R::        gosub, GuiInputCmdBar
 ~RControl:: HotKeyConfControl()
 ~`::        HotKeyConfWave()
 
-
 global InputCmdMode :=
-global InputCmdLastValue :=
 global HotKeyControlCount := 0
 HotKeyConfControl() {
 	(HotKeyControlCount < 1 && A_TimeSincePriorHotkey > 80 && A_TimeSincePriorHotkey < 400 && A_PriorHotkey = A_ThisHotkey) ? HotKeyControlCount ++ : (HotKeyControlCount := 0)
 	if (HotKeyControlCount > 0)
-        GuiInputCmdBar("", "", "")
+        gosub, GuiInputCmdBar
 }
 HotKeyConfWave() {
     Input, inputCmd, V T10, {vkC0},
@@ -447,34 +445,40 @@ TVSave(ItemName, ItemPos, MenuName) {
 
 
 ;========================= 输入Bar =========================
-global InputCmdBarHwnd := "inputCmdBar"
 global InputCmdBarExist := false
 global InputCmdEdit :=
 global InputCmdLV :=
-GuiInputCmdBar(ItemName, ItemPos, MenuName) {
+global InputCmdMatchText :=
+global InputCmdLastValue :=
+;GuiInputCmdBar未采用函数调用原因: AeroGlass在函数模式未生效
+GuiInputCmdBar:
     if (InputCmdBarExist) {
         Gui, InputCmdBar:Default
         Gui, InputCmdBar:Submit, NoHide
-        InputCmdLastValue := InputCmdEdit
+        confs.InputCmdLastValue := InputCmdEdit
         Gui, InputCmdBar:Hide
         InputCmdBarExist := false
         return
     }
+    global InputCmdBarHwnd := "inputCmdBar"
     InputCmdBarExist := true
     InputCmdMode := "inputBar"
+    InputCmdLastValue := confs.InputCmdLastValue
+    InputCmdBarThemeConf(themeBgColor, themeFontColor, themeX, themeY)
     OnMessage(0x0201, "WM_LBUTTONDOWN")
-    InputCmdBarThemeConf(themeBgColor, themeFontColor, themeX, themeY) 
     Gui, InputCmdBar:New, +LastFound -Caption -Border +AlwaysOnTop +hWnd%InputCmdBarHwnd%
     Gui, InputCmdBar:Margin, 5, 5
     Gui, InputCmdBar:Color, %themeBgColor%, %themeBgColor%
     Gui, InputCmdBar:Font, c%themeFontColor% s16 wbold, Microsoft YaHei
     Gui, InputCmdBar:Add, Edit, w450 h38 vInputCmdEdit gInputCmdEditHandler, %InputCmdLastValue%
     Gui, InputCmdBar:Font, s10 -w, Microsoft YaHei
-    Gui, InputCmdBar:Add, ListView, AltSubmit -Hdr -Multi ReadOnly Hidden LV0x8000 w450 r9 vInputCmdLV gInputCmdLVHandler, cmd|name
+    Gui, InputCmdBar:Add, ListView, AltSubmit -Hdr -Multi ReadOnly Hidden w450 r9 vInputCmdLV gInputCmdLVHandler, cmd|name
+    Gui, InputCmdBar:Font, s8, Microsoft YaHei
+    Gui, InputCmdBar:Add, Text, w450 vInputCmdMatchText
     Gui, InputCmdBar:Add, Button, Default w0 h0 Hidden gInputCmdSubmitHandler
     guiX := 10
     guiY := A_ScreenHeight - 500
-    Winset, Transparent, 240
+    Winset, Transparent, 238
     if (themeX && themeY)
         Gui, InputCmdBar:Show, w460 h48 x%themeX% y%themeY%
     else
@@ -483,7 +487,9 @@ GuiInputCmdBar(ItemName, ItemPos, MenuName) {
     LV_ModifyCol(2, 250)
     if (themeConfType == "blur")
         EnableBlur(InputCmdBarHwnd)
-}
+    if (InputCmdLastValue)
+        InputCmdEditHandler("", "", "")
+return
 
 InputCmdSubmitHandler(CtrlHwnd, GuiEvent, EventInfo) {
     Gui, InputCmdBar:Default
@@ -496,17 +502,19 @@ InputCmdSubmitHandler(CtrlHwnd, GuiEvent, EventInfo) {
         if (!rowNum)
             return
         LV_GetText(inputCmd, rowNum, 1)
-        ;GuiControl,, InputCmdEdit, %inputCmd%
     }
     Gui, InputCmdBar:Hide
-    InputCmdLastValue := inputCmd
+    InputCmdLastValue := inputCmd    
     InputCmdExec(inputCmd)
+    InputCmdBarExist := false
+    confs.InputCmdLastValue := inputCmd
+    SaveConf()
 }
 
 InputCmdBarGuiEscape:
     Gui, InputCmdBar:Submit, NoHide
     if (InputCmdEdit)
-        InputCmdLastValue := InputCmdEdit
+        confs.InputCmdLastValue := InputCmdEdit
     Gui, InputCmdBar:Hide
     InputCmdBarExist := false
 return
@@ -516,7 +524,7 @@ InputCmdEditHandler(CtrlHwnd, GuiEvent, EventInfo) {
     Gui, InputCmdBar:Show, h48
     GuiControl, InputCmdBar:Hide, InputCmdLV
     LV_Delete()
-    inputCmd := RegExReplace(Trim(InputCmdEdit), "\s+", " ")      ;去除首位空格, 将字符串内多个连续空格替换为单个空格
+    inputCmd := RegExReplace(LTrim(InputCmdEdit), "\s+", " ")      ;去除首位空格, 将字符串内多个连续空格替换为单个空格
     inputCmdArray := StrSplit(inputCmd, A_Space)
     inputCmdArrayLen := inputCmdArray.Length()
     if (inputCmdArrayLen == 1) {
@@ -539,8 +547,9 @@ InputCmdEditHandler(CtrlHwnd, GuiEvent, EventInfo) {
         }
     }
     if (LV_GetCount()) {
-        Gui, InputCmdBar:Show, h260
+        Gui, InputCmdBar:Show, h270
         GuiControl, InputCmdBar:Show, InputCmdLV
+        GuiControl, ,InputCmdMatchText, % "match result: " LV_GetCount()
     }
 }
 InputCmdLVHandler(CtrlHwnd, GuiEvent, EventInfo) {
@@ -575,7 +584,7 @@ InputCmdBarKeyUp() {
         rowNum := LV_GetNext(0, "Focused")
         if (rowNum == 1) {
             LV_Modify(1, "-Focus -Select")
-            ;GuiControl, Focus, InputCmdEdit
+            GuiControl, Focus, InputCmdEdit
         }
     }
 }
@@ -683,8 +692,10 @@ LoadCmdPathConf() {
                 fileDesc := fileName
             } else if (A_LoopFileExt == "lnk") {
                 FileGetShortcut, %A_LoopFileFullPath%, filePath,,,fileDesc
-                if (!filePath || !FileExist(filePath))
-                    continue
+                if (!filePath || !FileExist(filePath)) {
+                    filePath := A_LoopFileFullPath
+                    fileDesc := fileName
+                }
             } else {
                 filePath := A_LoopFileFullPath
                 fileExt := A_LoopFileExt
@@ -803,8 +814,8 @@ InputCmdExec(inputCmd) {
         return
     execLangFlag := InStr(exec, "execLang=", true)
     if (execLangFlag) {
-        RegExMatch(exec, "U)execLang=.*`r`n", execLang)
-        execLang := StrReplace(StrReplace(execLang, "execLang="), "`r`n")
+        RegExMatch(exec, "U)execLang=.*\s", execLang)
+        execLang := StrReplace(StrReplace(execLang, "execLang="), "`n")
         execLangPath := execLangPathBase "\" inputCmdKey "_" cmd "." execLang
         FileDelete, %execLangPath%
         FileEncoding
