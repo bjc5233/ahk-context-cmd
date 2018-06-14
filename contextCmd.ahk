@@ -13,6 +13,31 @@
 ;    1.auto模式(默认), 根据系统当前壁纸配置颜色, 窗口位置中间【需要第三方命令行工具imagemagick-convert.exe】
 ;    2.blur模式, AeroGlass风格, 由于在偏白色背景下无法看清文字, 因此位置放置在左下角
 ;    3.custom模式, 配置的固定几种颜色风格, 每次展示时随机颜色风格, 窗口位置中间
+;  输入框说明
+;    1.F1 打开命令树管理
+;    2.Up\Down 在输入框\候选命令列表上下移动
+;    3.候选列表, Right, 将当前选中的命令复制到输入框中
+;  DB表字段说明
+;    1.config表 
+;       [InputCmdLastValue 输入框上次值]
+;       [LastWallpaperColor 上次壁纸主色调]
+;       [LastWallpaperPath 上次壁纸路径]
+;       [LastWallpaperTimeStamp 上次壁纸修改时间戳]
+;       [theme 主题配置]
+;    2.cmd表 
+;       [name 名称]
+;       [cmd 命令名]
+;       [exec 命令执行代码]
+;       [treeSort 命令树中排序字段]
+;       [hit 命令命中次数]
+;       [pid 父级命令编号]
+;       [topPid 顶级命令编号<g get do q>]
+;    3.systemCmd表 
+;       [name 系统命令文件名<无扩展名>]
+;       [desc 系统命令文件描述]
+;       [hit 命令命中次数]
+;       [show 是否展示在搜索候选栏中<对于完全不会用到的命令设值0>]
+;       TODO 是否需要加入文件全路径
 ;备注
 ;  1. {vkC0}表示`
 ;  2. 配置命令的[执行]文本框中, 在第一行输入[目标语言注释符号 execLang= 目标语言]格式, 
@@ -21,13 +46,14 @@
 ;  3. 当命令命中次数到达阀值[ICBCmdHitThreshold\ICBSystemCmdHitThreshold], 将重新构建ICB变量, 使得命中次数多的命令可以在匹配结果中更加靠前
 ;TODO
 ;  1.新增命令时, 可以指定节点插入, 而不是在父节点末尾插入
-;  2.增加菜单搜索命令
+
 ;========================= 环境配置 =========================
 #Persistent
 #NoEnv
 #SingleInstance, Force
-SetBatchLines, 10ms
+#ErrorStdOut
 #HotkeyInterval 1000
+SetBatchLines, 10ms
 DetectHiddenWindows, On
 SetTitleMatchMode, 2
 SetKeyDelay, -1
@@ -63,11 +89,13 @@ global ICBSystemCmdMap := new OrderedArray()
 global ICBSystemCmdHitCount := 0
 global ICBSystemCmdHitThreshold := 5
 
+
+MenuTray()
 DBConnect()
 PrepareConfigData()
 PrepareICBData()
 PrepareSystemCmdData()
-MenuTray()
+print("contextCmd working...")
 ;========================= 初始化 =========================
 
 
@@ -127,7 +155,7 @@ GuiInputCmdBar:
     Gui, InputCmdBar:Font, c%themeFontColor% s16 wbold, Microsoft YaHei
     Gui, InputCmdBar:Add, Edit, w450 h38 vInputCmdEdit gInputCmdEditHandler, %InputCmdLastValue%
     Gui, InputCmdBar:Font, s10 -w, Microsoft YaHei
-    Gui, InputCmdBar:Add, ListView, AltSubmit -Hdr -Multi ReadOnly Hidden w450 r9 vInputCmdLV gInputCmdLVHandler, cmd|name
+    Gui, InputCmdBar:Add, ListView, AltSubmit -Hdr -Multi ReadOnly w450 r9 vInputCmdLV gInputCmdLVHandler, cmd|name
     Gui, InputCmdBar:Font, s8, Microsoft YaHei
     Gui, InputCmdBar:Add, Text, xm+5 w450 vInputCmdMatchText
     Gui, InputCmdBar:Add, Button, Default w0 h0 Hidden gInputCmdSubmitHandler
@@ -174,11 +202,11 @@ InputCmdBarGuiEscape:
 return
 
 InputCmdEditHandler(CtrlHwnd:="", GuiEvent:="", EventInfo:="") {
+    Gui, InputCmdBar:Default
     Gui, InputCmdBar:Submit, NoHide
     Gui, InputCmdBar:Show, h48
-    GuiControl, InputCmdBar:Hide, InputCmdLV
     LV_Delete()
-    inputCmd := RegExReplace(LTrim(InputCmdEdit), "\s+", " ")      ;去除首位空格, 将字符串内多个连续空格替换为单个空格
+    inputCmd := RegExReplace(Trim(InputCmdEdit), "\s+", " ")      ;去除首位空格, 将字符串内多个连续空格替换为单个空格
     inputCmdArray := StrSplit(inputCmd, A_Space)
     inputCmdArrayLen := inputCmdArray.Length()
     if (!inputCmd || inputCmdArrayLen == 1) {
@@ -201,9 +229,8 @@ InputCmdEditHandler(CtrlHwnd:="", GuiEvent:="", EventInfo:="") {
         }
     }
     if (LV_GetCount()) {
-        Gui, InputCmdBar:Show, h270
-        GuiControl, InputCmdBar:Show, InputCmdLV
         GuiControl, ,InputCmdMatchText, % "match result: " LV_GetCount()
+        Gui, InputCmdBar:Show, h270
     }
 }
 InputCmdLVHandler(CtrlHwnd, GuiEvent, EventInfo) {
@@ -222,9 +249,10 @@ InputCmdLVHandler(CtrlHwnd, GuiEvent, EventInfo) {
 
 
 #If WinActive(A_ScriptName) and WinActive("ahk_class AutoHotkeyGUI")
-    ~Up::   InputCmdBarKeyUp()
-    ~Down:: InputCmdBarKeyDown()
-    F1::    GuiTV()
+    ~Up::    InputCmdBarKeyUp()
+    ~Down::  InputCmdBarKeyDown()
+    ~Right:: InputCmdBarKeyRight()
+    F1::     GuiTV()
 #If
 InputCmdBarKeyUp() {
     Gui, InputCmdBar:Default
@@ -258,6 +286,21 @@ InputCmdBarKeyDown() {
         }
     }
 }
+InputCmdBarKeyRight() {
+    Gui, InputCmdBar:Default
+    GuiControlGet, focusedControl, FocusV
+    if (focusedControl == "InputCmdLV") {
+        rowNum := LV_GetNext(0, "Focused")
+        if (!rowNum)
+            return
+        LV_Modify(rowNum, "-Focus -Select")
+        LV_GetText(cmd, rowNum, 1)
+        GuiControl,, InputCmdEdit, %cmd%
+        GuiControl, Focus, InputCmdEdit
+        Send, {End}
+    }
+}
+
 
 
 InputCmdExec(inputCmd) {
@@ -277,8 +320,10 @@ InputCmdExec(inputCmd) {
     if (!inputCmdKey)
         return
     topPid := ICBTopPNamePidMap[inputCmdKey]
-    if (!topPid)
+    if (!topPid) {
+        ExecNativeCmd(inputCmdKey, inputCmdValue, inputCmdValueExtra)
         return
+    }
     topChildCmds := ICBTopPidChildCmdMap[topPid]
     if (!topChildCmds) {
         ExecNativeCmd(inputCmdKey, inputCmdValue, inputCmdValueExtra)
@@ -379,24 +424,16 @@ ExecNativeCmd(inputCmdKey, inputCmdValue:="", inputCmdValueExtra:="") {
     if (!inputCmdKey)
         return
     
-    execFlag := false
-    run, %inputCmdKey% %inputCmdValue% %inputCmdValueExtra%,, UseErrorLevel
+    inputCmd := inputCmdKey " '" inputCmdValue "' '" inputCmdValueExtra "'"
+    run, %inputCmdKey%,, UseErrorLevel
     if (ErrorLevel == ERROR) {
-        run, %inputCmdKey%.bat %inputCmdValue% %inputCmdValueExtra%,, UseErrorLevel
-        if (ErrorLevel == ERROR)
-            Tip("找不到指定的命令 !")
-        else
-            execFlag := true
-    } else {
-        execFlag := true
+        Tip("找不到指定的命令 !")
+        return
     }
     
-    if (!execFlag)
-        return
     systemCmdObj := ICBSystemCmdMap[inputCmdKey]
     if (!systemCmdObj)
         return
-    
     ICBSystemCmdHitCount += 1
     DBSystemCmdIncreaseHit(systemCmdObj.id)
     if (ICBSystemCmdHitCount >= ICBSystemCmdHitThreshold)
@@ -415,7 +452,7 @@ ExecNativeCmd(inputCmdKey, inputCmdValue:="", inputCmdValueExtra:="") {
 
 
 
-;========================= 命令树界面 =========================
+;========================= 命令树->总界面 =========================
 global TVCmdCount := 0
 global JsonTreeView :=
 GuiTV(ItemName:="", ItemPos:="", MenuName:="") {
@@ -444,6 +481,9 @@ GuiTV(ItemName:="", ItemPos:="", MenuName:="") {
     Menu, GuiTVMenu, Icon, 上移, SHELL32.dll, 247
     Menu, GuiTVMenu, Add, 下移, TVDown
     Menu, GuiTVMenu, Icon, 下移, SHELL32.dll, 248
+    Menu, GuiTVMenu, Add, 搜索, TVSearch
+    Menu, GuiTVMenu, Icon, 搜索, SHELL32.dll, 56
+    
     Gui, Menu, GuiTVMenu
     Gui, GuiTV:Show, , 命令树管理
     SB_SetText("总计" TVCmdCount "条命令")
@@ -459,7 +499,7 @@ TVHandler(CtrlHwnd, GuiEvent, EventInfo) {
         TV_Modify(A_EventInfo, "Select Vis")
 	}
 }
-;========================= 命令树界面 =========================
+;========================= 命令树->总界面 =========================
 ;========================= 命令树->添加 =========================
 global TVAddBranchNameEdit :=
 global TVAddBranchCmdEdit :=
@@ -682,9 +722,51 @@ TVDown(ItemName, ItemPos, MenuName) {
     TV_Modify(TVIdBranchIdMap[cmdObj.pid], "Select Vis Expand")
 }
 ;========================= 命令树->下移 =========================
+;========================= 命令树->搜索 =========================
+global TVSearchEdit :=
+global TVSearchLV :=
+TVSearch(ItemName, ItemPos, MenuName) {
+    Gui, GuiTVSearch:New
+	Gui, GuiTVSearch:Margin, 20, 20
+	Gui, GuiTVSearch:Font,, Microsoft YaHei
+    Gui, GuiTVSearch:Add, Edit, w565 vTVSearchEdit gTVSearchEditHandler
+    Gui, GuiTVSearch:Add, ListView, AltSubmit -Multi ReadOnly w565 r10 vTVSearchLV gTVSearchLVHandler, id|命令|名称|父级名称|顶级名称
+    LV_ModifyCol(1, 0)
+    LV_ModifyCol(2, 150)
+    LV_ModifyCol(3, 150)
+    LV_ModifyCol(4, 150)
+    LV_ModifyCol(5, 100)
+	Gui, GuiTVSearch:Show, ,搜索命令
+}
+TVSearchEditHandler(CtrlHwnd, GuiEvent, EventInfo) {
+    Gui, GuiTVSearch:Default
+    Gui, GuiTVSearch:Submit, NoHide
+    if (!TVSearchEdit)
+        return
+    LV_Delete()
+    searchStr := Trim(TVSearchEdit)
+    for cmdId, cmdObj in TVIdCmdObjMap {
+        if (InStr(cmdObj.cmd, searchStr)) {
+            parentCmdObj := TVIdCmdObjMap[cmdObj.pid]
+            topParentCmdObj := TVIdCmdObjMap[cmdObj.topPid]
+            LV_Add(, cmdId, cmdObj.cmd, cmdObj.name, parentCmdObj.name, topParentCmdObj.name)
+        }
+    }
+}
+TVSearchLVHandler(CtrlHwnd, GuiEvent, EventInfo) {
+	if (GuiEvent == "DoubleClick") {
+        Gui, GuiTVSearch:Default
+        LV_GetText(cmdId, A_EventInfo, 1)
+        branchId := TVIdBranchIdMap[cmdId]
+        if (!branchId)
+            return
 
-
-
+        print("DoubleClick " cmdId " " branchId)
+        Gui, GuiTV:Default
+        TV_Modify(branchId, "Select Vis")
+	}
+}
+;========================= 命令树->搜索 =========================
 
 
 ;========================= 公共函数 =========================
@@ -945,7 +1027,7 @@ PrepareSystemCmdData() {
     DBSystemCmdDel(systemCmdDelIds)
     ;重新读取DB构建数据
     ICBSystemCmdMap := new OrderedArray()
-    systemCmds := DBSystemCmdFind()
+    systemCmds := DBSystemCmdFind2()
     for index, systemCmdObj in systemCmds {
         ICBSystemCmdMap[systemCmdObj.name] := systemCmdObj
     }
@@ -1084,6 +1166,9 @@ DBCodeDel(cmdIds) {
 }
 DBSystemCmdFind() {
     return Query("select id, name, desc from systemCmd order by hit DESC")
+}
+DBSystemCmdFind2() {
+    return Query("select id, name, desc from systemCmd where show = 1 order by hit DESC")
 }
 DBSystemCmdNew(systemCmdObj) {
     resultSet := QueryOne("select ifnull(max(id) + 1, 1) as systemCmdId from systemCmd")
