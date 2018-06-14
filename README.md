@@ -35,19 +35,10 @@
 * 2018-05-29 16:54:53 最初版本
 
 ### TODO
-1. 添加命令时判断是否重复
-2. exec中加入execLang= 设定编程语言, 目前写死bat, 后续动态
-3. 增加菜单搜索命令
-3. 增加菜单判断命令是否已经存在
-4. label方式调用，导致global变量太多过于混乱，修改为函数调用。注意:Gui, AddBranchItem:Add, Text, x+5 yp-3 w400 vAddBranchParent, %parentBranchName%。vAddBranchParent必须为global类型
-5. inputCmdBar窗口大小目前写死, 使用变量定制
-6. 为命令添加权重，被使用次数越多的命令拍的更加靠前
-7. 数据存储到sqlite
-
-
 
 
 ### 演示
+<div align=center><img src="https://github.com/bjc5233/ahk-context-cmd/raw/master/resources/demo.gif"/></div>
 <div align=center><img src="https://github.com/bjc5233/ahk-context-cmd/raw/master/resources/demo.png"/></div>
 <div align=center><img src="https://github.com/bjc5233/ahk-context-cmd/raw/master/resources/demo2.png"/></div>
 <div align=center><img src="https://github.com/bjc5233/ahk-context-cmd/raw/master/resources/demo3.png"/></div>

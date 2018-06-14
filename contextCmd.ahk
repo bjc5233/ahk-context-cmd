@@ -45,7 +45,6 @@
 ;     会将此文本框文本保存到bat文件, 并执行该bat
 ;  3. 当命令命中次数到达阀值[ICBCmdHitThreshold\ICBSystemCmdHitThreshold], 将重新构建ICB变量, 使得命中次数多的命令可以在匹配结果中更加靠前
 ;TODO
-;  1.新增命令时, 可以指定节点插入, 而不是在父节点末尾插入
 
 ;========================= 环境配置 =========================
 #Persistent
@@ -504,34 +503,27 @@ TVHandler(CtrlHwnd, GuiEvent, EventInfo) {
 global TVAddBranchNameEdit :=
 global TVAddBranchCmdEdit :=
 global TVAddBranchExecEdit :=
-global TVAddBranchIndex :=
-global TVAddParentBranchId :=
-global TVAddParentCmdId :=
+global TVAddCmdObj :=
 TVAdd(ItemName, ItemPos, MenuName) {
     Gui, GuiTV:Default
-	selectBranchId := TV_GetSelection()
-    if (selectBranchId) {
-        cmdId := TVBranchIdIdMap[selectBranchId]
-        cmdObj := TVIdCmdObjMap[cmdId]
-        if (cmdObj.cmd) {
-            TVAddBranchIndex := selectBranchId
-            TVAddParentBranchId := TV_GetParent(selectBranchId)
-            TVAddParentCmdId := TVBranchIdIdMap[TVAddParentBranchId]
-            parentCmdObj := TVIdCmdObjMap[TVAddParentCmdId]
-            parentBranchName := parentCmdObj.name
+	branchId := TV_GetSelection()
+    if (branchId) {
+        cmdId := TVBranchIdIdMap[branchId]
+        TVAddCmdObj := TVIdCmdObjMap[cmdId]
+        if (TVAddCmdObj.cmd) {
+            ;选择叶子命令
+            parentBranchId := TV_GetParent(branchId)
+            parentCmdId := TVBranchIdIdMap[parentBranchId]
+            parentBranchName := TVIdCmdObjMap[parentCmdId].name
         } else {
-            TVAddBranchIndex :=
-            TVAddParentBranchId := selectBranchId
-            parentBranchName := cmdObj.name
-            TVAddParentCmdId := cmdObj.id
+            ;选择树枝命令
+            parentBranchName := TVAddCmdObj.name
         }
     } else {
-        TVAddBranchIndex :=
-        TVAddParentBranchId := 0
+        ;未选择
+        TVAddCmdObj :=
         parentBranchName := "root"
-        TVAddParentCmdId := 0
     }
-
     Gui, GuiTVAdd:New
 	Gui, GuiTVAdd:Margin, 20, 20
 	Gui, GuiTVAdd:Font,, Microsoft YaHei
@@ -557,29 +549,50 @@ TVAddSaveHandler(CtrlHwnd, GuiEvent, EventInfo) {
         return
     }
     
-    parentCmdObj := TVIdCmdObjMap[TVAddParentCmdId]
-    if (TVAddBranchCmdEdit) {
-        topParentCmdObj := TVIdCmdObjMap[parentCmdObj.topPid]
-        if (DBCmdTopPidCount(parentCmdObj.topPid, TVAddBranchCmdEdit)) {
-            MsgBox, % "[" topParentCmdObj.name "]分类下已有命令[" TVAddBranchCmdEdit "]，不能添加"
+    if (TVAddCmdObj) {
+        topPid := TVAddCmdObj.topPid
+        ;命令重复性检查
+        if (TVAddBranchCmdEdit) {
+            topParentCmdObj := TVIdCmdObjMap[topPid]
+            if (DBCmdTopPidCount(topPid, TVAddBranchCmdEdit)) {
+                MsgBox, % "[" topParentCmdObj.name "]顶级分类下已有命令[" TVAddBranchCmdEdit "]，不能添加"
+                return
+            }
+        }
+        if (TVAddCmdObj.cmd) {
+            ;选择叶子命令
+            pid := TVAddCmdObj.pid
+            DBCmdIncreaseTreeSort(pid, TVAddCmdObj.treeSort)
+            treeSort := TVAddCmdObj.treeSort + 1
+        } else {
+            ;选择树枝命令
+            pid := TVAddCmdObj.id
+            treeSort := DBCmdNextTreeSort(TVAddCmdObj.id)
+        }
+    } else {
+        pid := 0
+        topPid := 0
+        ;顶级命令名称重复性检查
+        if (DBCmdTopCmdCount(TVAddBranchNameEdit)) {
+            MsgBox, % "已存在名称为[" TVAddBranchNameEdit "]的顶级命令，不能添加"
             return
         }
+        treeSort := DBCmdTopCmdCount() + 1
     }
     
-    Gui, GuiTVAdd:Destroy
     newCmdObj := Object()
     newCmdObj.name := TVAddBranchNameEdit
     newCmdObj.cmd := TVAddBranchCmdEdit
     newCmdObj.exec := TVAddBranchExecEdit
-    newCmdObj.pid := TVAddParentCmdId
-    newCmdObj.topPid := parentCmdObj.topPid
-    newCmdObj.treeSort := DBCmdPidCount(TVAddParentCmdId) + 1
+    newCmdObj.pid := pid
+    newCmdObj.topPid := topPid
+    newCmdObj.hit := 0
+    newCmdObj.treeSort := treeSort
     DBCmdNew(newCmdObj)
+    Gui, GuiTVAdd:Destroy
     TVRefresh()
-    TV_Modify(TVIdBranchIdMap[TVAddParentCmdId], "Select Vis Expand")
-    ;TODO
-    ;treeSort重新设值
-    ;   如果选择了叶子节点, 从该叶子下个节点开始到结尾重新计treeSort
+    if (pid)
+        TV_Modify(TVIdBranchIdMap[pid], "Select Vis Expand")
 }
 TVAddCancelHandler(CtrlHwnd, GuiEvent, EventInfo) {
     Gui, GuiTVAdd:Destroy
@@ -729,8 +742,8 @@ TVSearch(ItemName, ItemPos, MenuName) {
     Gui, GuiTVSearch:New
 	Gui, GuiTVSearch:Margin, 20, 20
 	Gui, GuiTVSearch:Font,, Microsoft YaHei
-    Gui, GuiTVSearch:Add, Edit, w565 vTVSearchEdit gTVSearchEditHandler
-    Gui, GuiTVSearch:Add, ListView, AltSubmit -Multi ReadOnly w565 r10 vTVSearchLV gTVSearchLVHandler, id|命令|名称|父级名称|顶级名称
+    Gui, GuiTVSearch:Add, Edit, w570 vTVSearchEdit gTVSearchEditHandler
+    Gui, GuiTVSearch:Add, ListView, AltSubmit -Multi ReadOnly w570 r12 vTVSearchLV gTVSearchLVHandler, id|命令|名称|父级名称|顶级名称
     LV_ModifyCol(1, 0)
     LV_ModifyCol(2, 150)
     LV_ModifyCol(3, 150)
@@ -825,7 +838,7 @@ PrepareICBData() {
         cmd := cmdObj.cmd
         topPid := cmdObj.topPid
         ICBIdCmdObjMap[id] := cmdObj
-        if (id == cmdObj.topPid) {
+        if (cmdObj.topPid == 0) {
             ICBTopPNamePidMap[cmdObj.name] := id
         } else {
             if (!cmd)
@@ -985,7 +998,7 @@ PrepareSystemCmdData() {
                     FileRead, fileContent, filePath
                     RegExMatch(fileContent, "U)title\s.*\s", fileDesc)
                     fileDesc := StrReplace(StrReplace(fileDesc, "title "), "&")
-                } else if (fileExt == "vbs" || fileExt == "swf") {
+                } else if (fileExt == "vbs" || fileExt == "swf" || fileExt == "ahk") {
                     fileDesc := fileName
                 } else {
                     continue
@@ -1136,6 +1149,13 @@ DBCmdFind() {
 DBCmdFind2() {
     return Query("select id, name, cmd, exec, treeSort, hit, pid, topPid from cmd order by topPid ASC, hit DESC")
 }
+DBCmdTopCmdCount(name:="") {
+    sql := "select count(id) as count from cmd"
+    if (name)
+        sql := sql " where name = '" name "'"
+    resultSet := QueryOne(sql)
+    return resultSet["count"]
+}
 DBCmdTopPidCount(topPid, cmd) {
     resultSet := QueryOne("select count(id) as count from cmd where topPid = " topPid " AND cmd='" cmd "'")
     return resultSet["count"]
@@ -1156,6 +1176,13 @@ DBCmdNew(cmdObj) {
 DBCmdUpdate(cmdObj) {
     flag := CurrentDB.Update(cmdObj, "cmd")
     return flag
+}
+DBCmdNextTreeSort(pid) {
+    resultSet := QueryOne("select ifnull(max(treeSort) + 1, 1) as treeSort from cmd where pid = " pid)
+    return resultSet["treeSort"]
+}
+DBCmdIncreaseTreeSort(pid, treeSortStart) {
+    affectedRows := CurrentDB.Query("update cmd set treeSort = treeSort + 1 where pid = " pid " AND treeSort > " treeSortStart)
 }
 DBCmdIncreaseHit(cmdId) {
     affectedRows := CurrentDB.Query("update cmd set hit = hit + 1 where id = " cmdId)
