@@ -68,7 +68,7 @@ CoordMode, Menu
 ;========================= 初始化 =========================
 global CurrentDB := Object()
 global Config := Object()
-global ConfigThemeType := "auto"
+global ConfigThemeType := "random"      ;[random\auto\blur\custom]
 global ConfigExecLangPathBase := A_ScriptDir "\cache"
 
 ;命令树变量 TV => TreeView
@@ -76,6 +76,7 @@ global TVIdCmdObjMap := Object()
 global TVPidChildIdsMap := Object()
 global TVBranchIdIdMap := Object()
 global TVIdBranchIdMap := Object()
+global TVCmdCount := 0
 
 ;命令输入框变量 ICB => InputCmdBar
 global ICBIdCmdObjMap := Object()
@@ -101,7 +102,6 @@ print("contextCmd working...")
 
 ;========================= 配置热键 =========================
 MButton::   gosub, GuiInputCmdBar
-#R::        gosub, GuiInputCmdBar
 ~RControl:: HotKeyConfControl()
 ~`::        HotKeyConfWave()
 
@@ -146,7 +146,7 @@ GuiInputCmdBar:
     InputCmdBarExist := true
     InputCmdMode := "inputBar"
     InputCmdLastValue := Config.InputCmdLastValue
-    InputCmdBarThemeConf(themeBgColor, themeFontColor, themeX, themeY)
+    InputCmdBarThemeConf(themeType, themeBgColor, themeFontColor, themeX, themeY)
     OnMessage(0x0201, "WM_LBUTTONDOWN")
     Gui, InputCmdBar:New, +LastFound -Caption -Border +Owner +AlwaysOnTop +hWnd%InputCmdBarHwnd%
     Gui, InputCmdBar:Margin, 5, 5
@@ -167,7 +167,7 @@ GuiInputCmdBar:
         Gui, InputCmdBar:Show, w460 h48 center
     LV_ModifyCol(1, 180)
     LV_ModifyCol(2, 250)
-    if (ConfigThemeType == "blur")
+    if (themeType == "blur")
         EnableBlur(InputCmdBarHwnd)
     if (InputCmdLastValue)
         InputCmdEditHandler()
@@ -205,7 +205,7 @@ InputCmdEditHandler(CtrlHwnd:="", GuiEvent:="", EventInfo:="") {
     Gui, InputCmdBar:Submit, NoHide
     Gui, InputCmdBar:Show, h48
     LV_Delete()
-    inputCmd := RegExReplace(Trim(InputCmdEdit), "\s+", " ")      ;去除首位空格, 将字符串内多个连续空格替换为单个空格
+    inputCmd := RegExReplace(LTrim(InputCmdEdit), "\s+", " ")      ;去除首位空格, 将字符串内多个连续空格替换为单个空格
     inputCmdArray := StrSplit(inputCmd, A_Space)
     inputCmdArrayLen := inputCmdArray.Length()
     if (!inputCmd || inputCmdArrayLen == 1) {
@@ -313,8 +313,10 @@ InputCmdExec(inputCmd) {
     } else if (inputCmdArrayLen >= 2) {
         inputCmdKey := inputCmdArray[1]
         inputCmdValue := inputCmdArray[2]
-        if (inputCmdArrayLen == 3)
-            inputCmdValueExtra := inputCmdArray[3]
+        if (inputCmdArrayLen >= 3) {
+            posTemp := InStr(inputCmd, A_Space, true, 1, 2)
+            inputCmdValueExtra := SubStr(inputCmd, posTemp+1)
+        }
     }
     if (!inputCmdKey)
         return
@@ -423,11 +425,22 @@ ExecNativeCmd(inputCmdKey, inputCmdValue:="", inputCmdValueExtra:="") {
     if (!inputCmdKey)
         return
     
-    inputCmd := inputCmdKey " '" inputCmdValue "' '" inputCmdValueExtra "'"
-    run, %inputCmdKey%,, UseErrorLevel
-    if (ErrorLevel == ERROR) {
-        Tip("找不到指定的命令 !")
-        return
+    inputCmd := inputCmdKey
+    if (inputCmdValue)
+        inputCmd .= " " inputCmdValue
+    if (inputCmdValueExtra)
+        inputCmd .= " " inputCmdValueExtra
+    printClear()
+    print(inputCmd)
+    run, %inputCmd%,, UseErrorLevel
+    print(ErrorLevel)
+    if (ErrorLevel == "ERROR") {
+        inputCmd := inputCmdKey ".bat " inputCmdValue " " inputCmdValueExtra
+        run, %inputCmd%,, UseErrorLevel
+        if (ErrorLevel == "ERROR") {
+            Tip("找不到指定的命令 !")
+            return
+        }
     }
     
     systemCmdObj := ICBSystemCmdMap[inputCmdKey]
@@ -452,7 +465,6 @@ ExecNativeCmd(inputCmdKey, inputCmdValue:="", inputCmdValueExtra:="") {
 
 
 ;========================= 命令树->总界面 =========================
-global TVCmdCount := 0
 global JsonTreeView :=
 GuiTV(ItemName:="", ItemPos:="", MenuName:="") {
     PrepareTVData()
@@ -546,6 +558,10 @@ TVAddSaveHandler(CtrlHwnd, GuiEvent, EventInfo) {
     Gui, GuiTVAdd:Submit, NoHide
     if (!TVAddBranchNameEdit) {
         MsgBox, 必须填写[名称]
+        return
+    }
+    if (InStr(TVAddBranchNameEdit, " ", true)) {
+        MsgBox, [名称]中不能包含空格
         return
     }
     
@@ -862,6 +878,7 @@ PrepareTVData() {
     TVPidChildIdsMap := Object()
     TVBranchIdIdMap := Object()
     TVIdBranchIdMap := Object()
+    TVCmdCount := 0
     
     cmdObjs := DBCmdFind()
     for index, cmdObj in cmdObjs {
@@ -925,9 +942,16 @@ Array2Str(array) {
     return str
 }
 
-InputCmdBarThemeConf(ByRef themeBgColor, ByRef themeFontColor, ByRef themeX, ByRef themeY) {
-    themeConf := Config["theme"][ConfigThemeType]
-    if (ConfigThemeType == "auto") {
+InputCmdBarThemeConf(ByRef themeType, ByRef themeBgColor, ByRef themeFontColor, ByRef themeX, ByRef themeY) {
+    if (ConfigThemeType == "random") {
+        themeTypes := ["auto", "blur", "custom"]
+        Random, themeTypesIndex, themeTypes.MinIndex(), themeTypes.MaxIndex()
+        themeType := themeTypes[themeTypesIndex]
+    } else {
+        themeType := ConfigThemeType
+    }
+    themeConf := Config["theme"][themeType]
+    if (themeType == "auto") {
         RegRead, wallpaperPath, HKEY_CURRENT_USER\Control Panel\Desktop, WallPaper
         FileGetTime, wallpaperTimeStamp, %wallpaperPath%, M
         if (wallpaperPath != Config.LastWallpaperPath || wallpaperTimeStamp != Config.LastWallpaperTimeStamp) {
@@ -941,12 +965,12 @@ InputCmdBarThemeConf(ByRef themeBgColor, ByRef themeFontColor, ByRef themeX, ByR
         }
         themeFontColor := themeConf.fontColor
         themeX := themeY :=
-    } else if (ConfigThemeType == "blur") {
+    } else if (themeType == "blur") {
         themeBgColor := themeConf.bgColor
         themeFontColor := themeConf.fontColor
         themeX := themeConf.x
         themeY := themeConf.y
-    } else if (ConfigThemeType == "custom") {
+    } else if (themeType == "custom") {
         Random, themeConfCustomIndex, themeConf.MinIndex(), themeConf.MaxIndex()
         themeConfCustom := themeConf[themeConfCustomIndex]
         themeBgColor := themeConfCustom.bgColor
