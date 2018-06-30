@@ -38,13 +38,15 @@
 ;       [hit 命令命中次数]
 ;       [show 是否展示在搜索候选栏中<对于完全不会用到的命令设值0>]
 ;       TODO 是否需要加入文件全路径
+;    3.historyCmd表 
+;       [name 名称]
+;       [cmd 命令名]
 ;备注
 ;  1. {vkC0}表示`
-;  2. 配置命令的[执行]文本框中, 在第一行输入[目标语言注释符号 execLang= 目标语言]格式, 
-;       ::execLang=bat
+;  2. 配置命令的[执行]文本框中, 在第一行输入[目标语言注释符号 $execLang= 目标语言$]格式, 
+;       ::$execLang=bat$
 ;     会将此文本框文本保存到bat文件, 并执行该bat
 ;  3. 当命令命中次数到达阀值[ICBCmdHitThreshold\ICBSystemCmdHitThreshold], 将重新构建ICB变量, 使得命中次数多的命令可以在匹配结果中更加靠前
-;TODO
 
 ;========================= 环境配置 =========================
 #Persistent
@@ -82,6 +84,7 @@ global TVCmdCount := 0
 global ICBIdCmdObjMap := Object()
 global ICBTopPNamePidMap := Object()
 global ICBTopPidChildCmdMap := Object()
+global ICBHistoryCmds := Object()
 global ICBCmdHitCount := 0
 global ICBCmdHitThreshold := 5
 global ICBSystemPaths := [{"path": "C:\WINDOWS\System32\*.exe", "type": "system"}, {"path": "C:\WINDOWS\*.exe", "type": "system"}, {"path": "C:\path\*", "type": "custom"}, {"path": "C:\path\bat\*", "type": "custom"}]
@@ -208,7 +211,11 @@ InputCmdEditHandler(CtrlHwnd:="", GuiEvent:="", EventInfo:="") {
     inputCmd := RegExReplace(LTrim(InputCmdEdit), "\s+", " ")      ;去除首位空格, 将字符串内多个连续空格替换为单个空格
     inputCmdArray := StrSplit(inputCmd, A_Space)
     inputCmdArrayLen := inputCmdArray.Length()
-    if (!inputCmd || inputCmdArrayLen == 1) {
+    if (!inputCmd || inputCmd == " ") {
+        for index, historyCmd in ICBHistoryCmds {
+            LV_Add(, historyCmd.cmd, historyCmd.name)
+        }
+    } else if (inputCmdArrayLen == 1) {
         for systemCmdName, systemCmdObj in ICBSystemCmdMap {
             if (RegExMatch(systemCmdName, "i)^" inputCmd))
                 LV_Add(, systemCmdName, systemCmdObj.desc)
@@ -348,7 +355,7 @@ InputCmdExec(inputCmd) {
     execLangFlag := InStr(exec, "execLang=", true)
     if (execLangFlag) {
         RegExMatch(exec, "U)execLang=.*\s", execLang)
-        execLang := StrReplace(StrReplace(execLang, "execLang="), "`n")
+        execLang := RegExReplace(StrReplace(execLang, "execLang="), "\s?")
         execLangPath := ConfigExecLangPathBase "\" inputCmdKey "_" cmd "." execLang
         FileDelete, %execLangPath%
         FileEncoding
@@ -409,6 +416,14 @@ InputCmdExec(inputCmd) {
             run, %exec%
         }
     }
+    
+    
+    newHistoryCmdObj := Object()
+    newHistoryCmdObj.name := cmdObj.name
+    newHistoryCmdObj.cmd := inputCmd
+    ICBHistoryCmds.InsertAt(1, newHistoryCmdObj)
+    DBHistoryCmdNew(newHistoryCmdObj)
+    
     ICBCmdHitCount += 1
     DBCmdIncreaseHit(cmdId)
     if (ICBCmdHitCount >= ICBCmdHitThreshold)
@@ -430,10 +445,12 @@ ExecNativeCmd(inputCmdKey, inputCmdValue:="", inputCmdValueExtra:="") {
         inputCmd .= " " inputCmdValue
     if (inputCmdValueExtra)
         inputCmd .= " " inputCmdValueExtra
-    printClear()
-    print(inputCmd)
+    newHistoryCmdObj := Object()
+    newHistoryCmdObj.cmd := inputCmd
+    ICBHistoryCmds.InsertAt(1, newHistoryCmdObj)
+    DBHistoryCmdNew(newHistoryCmdObj)
+    
     run, %inputCmd%,, UseErrorLevel
-    print(ErrorLevel)
     if (ErrorLevel == "ERROR") {
         inputCmd := inputCmdKey ".bat " inputCmdValue " " inputCmdValueExtra
         run, %inputCmd%,, UseErrorLevel
@@ -789,8 +806,6 @@ TVSearchLVHandler(CtrlHwnd, GuiEvent, EventInfo) {
         branchId := TVIdBranchIdMap[cmdId]
         if (!branchId)
             return
-
-        print("DoubleClick " cmdId " " branchId)
         Gui, GuiTV:Default
         TV_Modify(branchId, "Select Vis")
 	}
@@ -869,6 +884,8 @@ PrepareICBData() {
             }
         }
     }
+    
+    ICBHistoryCmds := DBHistoryCmdFind()
     print("PrepareICBData finish...")
 }
 
@@ -1242,6 +1259,18 @@ DBSystemCmdIncreaseHit(systemCmdId) {
     affectedRows := CurrentDB.Query("update systemCmd set hit = hit + 1 where id = " systemCmdId)
 }
 
+DBHistoryCmdFind() {
+    return Query("select id, name, cmd from historyCmd order by id DESC limit 20")
+}
+DBHistoryCmdNew(historyCmdObj) {
+    resultSet := QueryOne("select ifnull(max(id) + 1, 1) as historyCmdId from historyCmd")
+    historyCmdId := resultSet["historyCmdId"]
+    historyCmdObj.id := historyCmdId
+    FormatTime, datetime, , yyyy-MM-dd HH:mm:ss
+    historyCmdObj.datetime := datetime
+    CurrentDB.Insert(historyCmdObj, "historyCmd")
+    return historyCmdId
+}
 ;========================= DB-DAO =========================
 
 
