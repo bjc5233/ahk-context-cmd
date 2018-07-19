@@ -4,19 +4,21 @@
 ;    启用方式2： 双击Ctrl弹出输入框，输入命令
 ;  配置说明
 ;    图标右键->修改菜单-> 新增\编辑\删除\保存命令树
-;    => g.bat 快捷跳转命令
-;    => get.bat 快捷复制命令
-;    => q.bat qq联系人跳转
-;    => do.bat
+;    => g   快捷跳转命令
+;    => get 快捷复制命令
+;    => q   qq联系人跳转
+;    => do  综合性处理命令
 ;    => 其他系统级别的命令、快捷方式 【calc notepad...】
 ;  主题说明
 ;    1.auto模式(默认), 根据系统当前壁纸配置颜色, 窗口位置中间【需要第三方命令行工具imagemagick-convert.exe】
 ;    2.blur模式, AeroGlass风格, 由于在偏白色背景下无法看清文字, 因此位置放置在左下角
 ;    3.custom模式, 配置的固定几种颜色风格, 每次展示时随机颜色风格, 窗口位置中间
-;  输入框说明
-;    1.F1 打开命令树管理
-;    2.Up\Down 在输入框\候选命令列表上下移动
-;    3.候选列表, Right, 将当前选中的命令复制到输入框中
+;  输入框界面快捷键说明
+;    1.总界面   - F1键      - 打开命令树管理
+;    2.总界面   - Esc键     - 关闭
+;    3.候选列表 - Up\Down键 - 在输入框\候选命令列表上下移动
+;    4.候选列表 - Right键   - 将当前选中的命令复制到输入框中
+;    5.输入框   - Tab键     - 将候选列表中第一个结果复制到输入框中
 ;  DB表字段说明
 ;    1.config表 
 ;       [InputCmdLastValue 输入框上次值]
@@ -105,6 +107,7 @@ print("contextCmd working...")
 
 ;========================= 配置热键 =========================
 MButton::   gosub, GuiInputCmdBar
+#R::   gosub, GuiInputCmdBar
 ~RControl:: HotKeyConfControl()
 ~`::        HotKeyConfWave()
 
@@ -172,8 +175,7 @@ GuiInputCmdBar:
     LV_ModifyCol(2, 250)
     if (themeType == "blur")
         EnableBlur(InputCmdBarHwnd)
-    if (InputCmdLastValue)
-        InputCmdEditHandler()
+    InputCmdEditHandler()
 return
 
 InputCmdSubmitHandler(CtrlHwnd, GuiEvent, EventInfo) {
@@ -258,6 +260,7 @@ InputCmdLVHandler(CtrlHwnd, GuiEvent, EventInfo) {
     ~Up::    InputCmdBarKeyUp()
     ~Down::  InputCmdBarKeyDown()
     ~Right:: InputCmdBarKeyRight()
+    ~Tab::   InputCmdBarKeyTab()
     F1::     GuiTV()
 #If
 InputCmdBarKeyUp() {
@@ -306,7 +309,16 @@ InputCmdBarKeyRight() {
         Send, {End}
     }
 }
-
+InputCmdBarKeyTab() {
+    Gui, InputCmdBar:Default
+    GuiControlGet, focusedControl, FocusV
+    if (focusedControl == "InputCmdEdit") {
+        if (LV_GetCount()) {
+            LV_GetText(cmd, 1, 1)
+            GuiControl,, InputCmdEdit, %cmd%
+        }
+    }
+}
 
 
 InputCmdExec(inputCmd) {
@@ -445,10 +457,8 @@ ExecNativeCmd(inputCmdKey, inputCmdValue:="", inputCmdValueExtra:="") {
         inputCmd .= " " inputCmdValue
     if (inputCmdValueExtra)
         inputCmd .= " " inputCmdValueExtra
-    newHistoryCmdObj := Object()
-    newHistoryCmdObj.cmd := inputCmd
-    ICBHistoryCmds.InsertAt(1, newHistoryCmdObj)
-    DBHistoryCmdNew(newHistoryCmdObj)
+
+    
     
     run, %inputCmd%,, UseErrorLevel
     if (ErrorLevel == "ERROR") {
@@ -460,13 +470,19 @@ ExecNativeCmd(inputCmdKey, inputCmdValue:="", inputCmdValueExtra:="") {
         }
     }
     
+    
+    newHistoryCmdObj := Object()
+    newHistoryCmdObj.cmd := inputCmd
     systemCmdObj := ICBSystemCmdMap[inputCmdKey]
-    if (!systemCmdObj)
-        return
-    ICBSystemCmdHitCount += 1
-    DBSystemCmdIncreaseHit(systemCmdObj.id)
-    if (ICBSystemCmdHitCount >= ICBSystemCmdHitThreshold)
-        PrepareSystemCmdData()
+    if (systemCmdObj) {
+        newHistoryCmdObj.name := systemCmdObj.desc
+        ICBSystemCmdHitCount += 1
+        DBSystemCmdIncreaseHit(systemCmdObj.id)
+        if (ICBSystemCmdHitCount >= ICBSystemCmdHitThreshold)
+            PrepareSystemCmdData()
+    }
+    ICBHistoryCmds.InsertAt(1, newHistoryCmdObj)
+    DBHistoryCmdNew(newHistoryCmdObj)
 }
 ;========================= 输入Bar =========================
 
@@ -1260,7 +1276,7 @@ DBSystemCmdIncreaseHit(systemCmdId) {
 }
 
 DBHistoryCmdFind() {
-    return Query("select id, name, cmd from historyCmd order by id DESC limit 20")
+    return Query("select id, name, cmd from historyCmd order by id DESC limit 30")
 }
 DBHistoryCmdNew(historyCmdObj) {
     resultSet := QueryOne("select ifnull(max(id) + 1, 1) as historyCmdId from historyCmd")
