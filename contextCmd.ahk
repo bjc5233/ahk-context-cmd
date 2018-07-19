@@ -260,7 +260,7 @@ InputCmdLVHandler(CtrlHwnd, GuiEvent, EventInfo) {
     ~Up::    InputCmdBarKeyUp()
     ~Down::  InputCmdBarKeyDown()
     ~Right:: InputCmdBarKeyRight()
-    ~Tab::   InputCmdBarKeyTab()
+    Tab::    InputCmdBarKeyTab()
     F1::     GuiTV()
 #If
 InputCmdBarKeyUp() {
@@ -316,6 +316,7 @@ InputCmdBarKeyTab() {
         if (LV_GetCount()) {
             LV_GetText(cmd, 1, 1)
             GuiControl,, InputCmdEdit, %cmd%
+            Send, {End}
         }
     }
 }
