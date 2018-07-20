@@ -8,6 +8,7 @@
 ;    => get 快捷复制命令
 ;    => q   qq联系人跳转
 ;    => do  综合性处理命令
+;    => -   contextCmd内建指令【theme reload exit tree】
 ;    => 其他系统级别的命令、快捷方式 【calc notepad...】
 ;  主题说明
 ;    1.auto模式(默认), 根据系统当前壁纸配置颜色, 窗口位置中间【需要第三方命令行工具imagemagick-convert.exe】
@@ -72,7 +73,6 @@ CoordMode, Menu
 ;========================= 初始化 =========================
 global CurrentDB := Object()
 global Config := Object()
-global ConfigThemeType := "random"      ;[random\auto\blur\custom]
 global ConfigExecLangPathBase := A_ScriptDir "\cache"
 
 ;命令树变量 TV => TreeView
@@ -93,7 +93,7 @@ global ICBSystemPaths := [{"path": "C:\WINDOWS\System32\*.exe", "type": "system"
 global ICBSystemCmdMap := new OrderedArray()
 global ICBSystemCmdHitCount := 0
 global ICBSystemCmdHitThreshold := 5
-
+global ICBBuildInCmdMap := new OrderedArray()
 
 MenuTray()
 DBConnect()
@@ -107,7 +107,7 @@ print("contextCmd working...")
 
 ;========================= 配置热键 =========================
 MButton::   gosub, GuiInputCmdBar
-#R::   gosub, GuiInputCmdBar
+#R::        gosub, GuiInputCmdBar
 ~RControl:: HotKeyConfControl()
 ~`::        HotKeyConfWave()
 
@@ -148,6 +148,10 @@ GuiInputCmdBar:
         InputCmdBarExist := false
         return
     }
+    if (!IsEnglishKeyboard())  ;确保当前为英文输入法
+       ActiveEnglishKeyboard()
+       
+       
     global InputCmdBarHwnd := "inputCmdBar"
     InputCmdBarExist := true
     InputCmdMode := "inputBar"
@@ -218,26 +222,41 @@ InputCmdEditHandler(CtrlHwnd:="", GuiEvent:="", EventInfo:="") {
             LV_Add(, historyCmd.cmd, historyCmd.name)
         }
     } else if (inputCmdArrayLen == 1) {
-        for systemCmdName, systemCmdObj in ICBSystemCmdMap {
-            if (RegExMatch(systemCmdName, "i)^" inputCmd))
-                LV_Add(, systemCmdName, systemCmdObj.desc)
+        if (inputCmd == "-") {
+            for cmdName, cmdDesc in ICBBuildInCmdMap {
+                if (RegExMatch(cmdName, "i)^" inputCmdValue))
+                    LV_Add(, "- " cmdName, cmdDesc)
+            }
+        } else {
+            for systemCmdName, systemCmdObj in ICBSystemCmdMap {
+                if (RegExMatch(systemCmdName, "i)^" inputCmd))
+                    LV_Add(, systemCmdName, systemCmdObj.desc)
+            }
         }
-    } else if (inputCmdArrayLen >= 2) {
+    } else if (inputCmdArrayLen  >= 2) {
         inputCmdKey := inputCmdArray[1]
-        topPid := ICBTopPNamePidMap[inputCmdKey]
-        if (!topPid)
-            return
-        topChildCmds := ICBTopPidChildCmdMap[topPid]
-        if (!topChildCmds)
-            return
         inputCmdValue := inputCmdArray[2]
-        for cmdKey, cmdId in topChildCmds {
-            if (RegExMatch(cmdKey, "i)^" inputCmdValue))
-                LV_Add(, inputCmdKey " " cmdKey, ICBIdCmdObjMap[cmdId].name)
+        if (inputCmdKey == "-") {
+            for cmdName, cmdDesc in ICBBuildInCmdMap {
+                if (RegExMatch(cmdName, "i)^" inputCmdValue))
+                    LV_Add(, "- " cmdName, cmdDesc)
+            }
+        } else {
+            topPid := ICBTopPNamePidMap[inputCmdKey]
+            if (!topPid)
+                return
+            topChildCmds := ICBTopPidChildCmdMap[topPid]
+            if (!topChildCmds)
+                return
+            inputCmdValue := inputCmdArray[2]
+            for cmdKey, cmdId in topChildCmds {
+                if (RegExMatch(cmdKey, "i)^" inputCmdValue))
+                    LV_Add(, inputCmdKey " " cmdKey, ICBIdCmdObjMap[cmdId].name)
+            }
         }
     }
     if (LV_GetCount()) {
-        GuiControl, ,InputCmdMatchText, % "match result: " LV_GetCount()
+        GuiControl, ,InputCmdMatchText, % "match: " LV_GetCount()
         Gui, InputCmdBar:Show, h270
     }
 }
@@ -340,6 +359,11 @@ InputCmdExec(inputCmd) {
     }
     if (!inputCmdKey)
         return
+    if (inputCmdKey == "-") {
+        ExecBuildInCmd(inputCmdKey, inputCmdValue, inputCmdValueExtra)
+        return
+    }
+    
     topPid := ICBTopPNamePidMap[inputCmdKey]
     if (!topPid) {
         ExecNativeCmd(inputCmdKey, inputCmdValue, inputCmdValueExtra)
@@ -452,15 +476,11 @@ InputCmdExec(inputCmd) {
 ExecNativeCmd(inputCmdKey, inputCmdValue:="", inputCmdValueExtra:="") {
     if (!inputCmdKey)
         return
-    
     inputCmd := inputCmdKey
     if (inputCmdValue)
         inputCmd .= " " inputCmdValue
     if (inputCmdValueExtra)
         inputCmd .= " " inputCmdValueExtra
-
-    
-    
     run, %inputCmd%,, UseErrorLevel
     if (ErrorLevel == "ERROR") {
         inputCmd := inputCmdKey ".bat " inputCmdValue " " inputCmdValueExtra
@@ -470,7 +490,6 @@ ExecNativeCmd(inputCmdKey, inputCmdValue:="", inputCmdValueExtra:="") {
             return
         }
     }
-    
     
     newHistoryCmdObj := Object()
     newHistoryCmdObj.cmd := inputCmd
@@ -484,6 +503,24 @@ ExecNativeCmd(inputCmdKey, inputCmdValue:="", inputCmdValueExtra:="") {
     }
     ICBHistoryCmds.InsertAt(1, newHistoryCmdObj)
     DBHistoryCmdNew(newHistoryCmdObj)
+}
+
+
+
+ExecBuildInCmd(inputCmdKey, inputCmdValue, inputCmdValueExtra:="") {
+    if (inputCmdValue == "theme") {
+        if (!inputCmdValueExtra)
+            return
+        if (inputCmdValueExtra == "random" || inputCmdValueExtra == "auto" || inputCmdValueExtra == "blur" || inputCmdValueExtra == "custom") {
+            Config.themeType := inputCmdValueExtra
+        }
+    } else if (inputCmdValue == "tree") {
+        GuiTV()
+    } else if (inputCmdValue == "reload") {
+        MenuTrayReload()
+    } else if (inputCmdValue == "exit") {
+        MenuTrayExit()
+    }
 }
 ;========================= 输入Bar =========================
 
@@ -842,13 +879,13 @@ MenuTray() {
     Menu, Tray, Default, 修改命令
 }
 
-MenuTrayReload(ItemName, ItemPos, MenuName) {
+MenuTrayReload(ItemName:="", ItemPos:="", MenuName:="") {
     Config.delete("theme")
     DBConfigUpdate(Config)
     CurrentDB.Close()
     Reload
 }
-MenuTrayExit(ItemName, ItemPos, MenuName) {
+MenuTrayExit(ItemName:="", ItemPos:="", MenuName:="") {
     Config.delete("theme")
     DBConfigUpdate(Config)
     CurrentDB.Close()
@@ -868,6 +905,8 @@ PrepareConfigData() {
     Config := Object()
     Config := DBConfigFind()
     Config.theme := JSON.Load(Config.theme)
+    if (!Config.themeType)
+        Config.themeType := "random"
     
     IfNotExist, %ConfigExecLangPathBase%
         FileCreateDir, %ConfigExecLangPathBase%
@@ -903,6 +942,11 @@ PrepareICBData() {
     }
     
     ICBHistoryCmds := DBHistoryCmdFind()
+    ICBBuildInCmdMap := new OrderedArray()
+    ICBBuildInCmdMap["theme"] := "切换主题[random\auto\blur\custom]"
+    ICBBuildInCmdMap["tree"] := "编辑命令树"
+    ICBBuildInCmdMap["reload"] := "重启"
+    ICBBuildInCmdMap["exit"] := "退出"
     print("PrepareICBData finish...")
 }
 
@@ -977,12 +1021,12 @@ Array2Str(array) {
 }
 
 InputCmdBarThemeConf(ByRef themeType, ByRef themeBgColor, ByRef themeFontColor, ByRef themeX, ByRef themeY) {
-    if (ConfigThemeType == "random") {
+    if (Config.themeType == "random") {
         themeTypes := ["auto", "blur", "custom"]
         Random, themeTypesIndex, themeTypes.MinIndex(), themeTypes.MaxIndex()
         themeType := themeTypes[themeTypesIndex]
     } else {
-        themeType := ConfigThemeType
+        themeType := Config.themeType
     }
     themeConf := Config["theme"][themeType]
     if (themeType == "auto") {
@@ -1189,6 +1233,16 @@ StdoutToVar_CreateProcess(sCmd, sEncoding:="CP0", sDir:="", ByRef nExitCode:=0) 
     DllCall( "CloseHandle",        Ptr,NumGet(pi,A_PtrSize)          )
     DllCall( "CloseHandle",        Ptr,hStdOutRd                     )
     Return sOutput
+}
+
+IsEnglishKeyboard() {
+    keyboardName :=
+    VarSetCapacity(keyboardName, 50)
+    DllCall("GetKeyboardLayoutName", "Str", keyboardName)
+    return (keyboardName == "00000409")
+}
+ActiveEnglishKeyboard() {
+    DllCall("SendMessage", UInt, WinActive("A"), UInt, 80, UInt, 1, UInt, DllCall("LoadKeyboardLayout", Str, "00000409", UInt, 1))
 }
 ;========================= 公共函数 =========================
 
