@@ -13,7 +13,7 @@
  => get 快捷复制命令
  => q   qq联系人跳转
  => do  综合性处理命令
- => -   contextCmd内建指令【theme reload exit tree】
+ => -   contextCmd内建指令【theme[切换主题] tree[编辑命令树] history[历史命令] reload[重启脚本] quit[关闭界面] exit[退出脚本]】 
  => 其他系统级别的命令、快捷方式 【calc notepad...】
 ```
 

@@ -8,7 +8,7 @@
 ;    => get 快捷复制命令
 ;    => q   qq联系人跳转
 ;    => do  综合性处理命令
-;    => -   contextCmd内建指令【theme reload exit tree】
+;    => -   contextCmd内建指令【theme[切换主题] tree[编辑命令树] history[历史命令] reload[重启脚本] quit[关闭界面] exit[退出脚本]】 
 ;    => 其他系统级别的命令、快捷方式 【calc notepad...】
 ;  主题说明
 ;    1.auto模式(默认), 根据系统当前壁纸配置颜色, 窗口位置中间【需要第三方命令行工具imagemagick-convert.exe】
@@ -217,7 +217,7 @@ InputCmdEditHandler(CtrlHwnd:="", GuiEvent:="", EventInfo:="") {
     inputCmd := RegExReplace(LTrim(InputCmdEdit), "\s+", " ")      ;去除首位空格, 将字符串内多个连续空格替换为单个空格
     inputCmdArray := StrSplit(inputCmd, A_Space)
     inputCmdArrayLen := inputCmdArray.Length()
-    if (!inputCmd || inputCmd == " ") {
+    if (!inputCmd || inputCmd == " " || inputCmd == "- history") {
         for index, historyCmd in ICBHistoryCmds {
             LV_Add(, historyCmd.cmd, historyCmd.name)
         }
@@ -516,8 +516,12 @@ ExecBuildInCmd(inputCmdKey, inputCmdValue, inputCmdValueExtra:="") {
         }
     } else if (inputCmdValue == "tree") {
         GuiTV()
+    } else if (inputCmdValue == "history") {
+        return
     } else if (inputCmdValue == "reload") {
         MenuTrayReload()
+    } else if (inputCmdValue == "quit") {
+        gosub, GuiInputCmdBar
     } else if (inputCmdValue == "exit") {
         MenuTrayExit()
     }
@@ -945,8 +949,10 @@ PrepareICBData() {
     ICBBuildInCmdMap := new OrderedArray()
     ICBBuildInCmdMap["theme"] := "切换主题[random\auto\blur\custom]"
     ICBBuildInCmdMap["tree"] := "编辑命令树"
-    ICBBuildInCmdMap["reload"] := "重启"
-    ICBBuildInCmdMap["exit"] := "退出"
+    ICBBuildInCmdMap["history"] := "历史命令"
+    ICBBuildInCmdMap["reload"] := "重启脚本"
+    ICBBuildInCmdMap["quit"] := "关闭界面"
+    ICBBuildInCmdMap["exit"] := "退出脚本"
     print("PrepareICBData finish...")
 }
 
@@ -1331,7 +1337,7 @@ DBSystemCmdIncreaseHit(systemCmdId) {
 }
 
 DBHistoryCmdFind() {
-    return Query("select id, name, cmd from historyCmd order by id DESC limit 30")
+    return Query("select id, name, cmd from historyCmd order by id DESC limit 40")
 }
 DBHistoryCmdNew(historyCmdObj) {
     resultSet := QueryOne("select ifnull(max(id) + 1, 1) as historyCmdId from historyCmd")
