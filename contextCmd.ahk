@@ -642,6 +642,10 @@ TVAddSaveHandler(CtrlHwnd, GuiEvent, EventInfo) {
     
     if (TVAddCmdObj) {
         topPid := TVAddCmdObj.topPid
+        if (topPid == 0) {
+            ;当topPid值为0说明TVAddCmdObj目前是顶级节点(g get...)
+            topPid := TVAddCmdObj.id
+        }
         ;命令重复性检查
         if (TVAddBranchCmdEdit) {
             topParentCmdObj := TVIdCmdObjMap[topPid]
