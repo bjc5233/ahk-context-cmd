@@ -169,12 +169,13 @@ GuiInputCmdBar:
     Gui, InputCmdBar:Add, Text, xm+5 w450 vInputCmdMatchText
     Gui, InputCmdBar:Add, Button, Default w0 h0 Hidden gInputCmdSubmitHandler
     guiX := 10
-    guiY := A_ScreenHeight - 500
+    guiY := A_ScreenHeight/2 - 150
     Winset, Transparent, 238
-    if (themeX && themeY)
+    if (themeX && themeY) {
         Gui, InputCmdBar:Show, w460 h48 x%themeX% y%themeY%
-    else
-        Gui, InputCmdBar:Show, w460 h48 center
+    } else {
+        Gui, InputCmdBar:Show, w460 h48 xCenter y%guiY%
+    }
     LV_ModifyCol(1, 180)
     LV_ModifyCol(2, 250)
     if (themeType == "blur")
