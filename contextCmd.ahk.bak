@@ -147,7 +147,8 @@ GuiInputCmdBar:
         InputCmdBarExist := false
         return
     }
-    ActiveEnglishKeyboard() ;确保当前为英文输入法
+    if (!IsEnglishKeyboard())  ;确保当前为英文输入法
+       ActiveEnglishKeyboard()
        
        
     global InputCmdBarHwnd := "inputCmdBar"
@@ -169,7 +170,6 @@ GuiInputCmdBar:
     guiX := 10
     guiY := A_ScreenHeight/2 - 150
     Winset, Transparent, 238
-    ActiveEnglishKeyboard() ;show之前再次确保当前为英文输入法
     if (themeX && themeY) {
         Gui, InputCmdBar:Show, w460 h48 x%themeX% y%themeY%
     } else {

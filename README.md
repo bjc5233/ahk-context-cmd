@@ -43,7 +43,12 @@
 * 2018-06-11  1:19:57 增加搜索栏主题颜色
 * 2018-05-29 16:54:53 最初版本
 
+
 ### TODO
+1. 当输入无法匹配命令，会根据当前输入key和所有key进行字符串相似度比较, 提供猜测建议
+2. 命令匹配模式[startWith] ==> [containsWith]
+3. 历史记录中，当当前要记录的与前一条一样，则不记录数据库
+4. 对第二层级命令进行提示[g ziliao mobile]中的mobile
 
 
 ### 演示
@@ -55,5 +60,5 @@
 
 
 ### 其他
-1. 项目整合替代了[ahk-context-command](https://github.com/bjc5233/ahk-context-command)、[g.bat](https://github.com/bjc5233/batch-shortcut-go)、[get.bat](https://github.com/bjc5233/batch-shortcut-get)、[q.bat](https://github.com/bjc5233/batch-shortcut-qq)、do.bat
-2. 项目自带配置的命令中有些涉及bat脚本, 需要一定的环境, 不一定执行成功
+1. 项目整合替代了[g.bat](https://github.com/bjc5233/batch-shortcut-go)、[get.bat](https://github.com/bjc5233/batch-shortcut-get)、[q.bat](https://github.com/bjc5233/batch-shortcut-qq)、do.bat
+2. 项目自带事例命令中有些涉及bat脚本, 需要一定的环境[如第三方exe文件], 不保证执行成功
