@@ -100,7 +100,7 @@ DBConnect()
 PrepareConfigData()
 PrepareICBData()
 PrepareSystemCmdData()
-print("contextCmd working...")
+print("contextCmd is working")
 ;========================= 初始化 =========================
 
 
@@ -166,10 +166,13 @@ GuiInputCmdBar:
     Gui, InputCmdBar:Font, s8, Microsoft YaHei
     Gui, InputCmdBar:Add, Text, xm+5 w450 vInputCmdMatchText
     Gui, InputCmdBar:Add, Button, Default w0 h0 Hidden gInputCmdSubmitHandler
+    
+    if (!IsEnglishKeyboard())
+        ActiveEnglishKeyboard2() ;show之前再次确保当前为英文输入法
+    
     guiX := 10
     guiY := A_ScreenHeight/2 - 150
     Winset, Transparent, 238
-    ActiveEnglishKeyboard() ;show之前再次确保当前为英文输入法
     if (themeX && themeY) {
         Gui, InputCmdBar:Show, w460 h48 x%themeX% y%themeY%
     } else {
@@ -1253,6 +1256,9 @@ IsEnglishKeyboard() {
 }
 ActiveEnglishKeyboard() {
     DllCall("SendMessage", UInt, WinActive("A"), UInt, 80, UInt, 1, UInt, DllCall("LoadKeyboardLayout", Str, "00000409", UInt, 1))
+}
+ActiveEnglishKeyboard2() {
+    Send, #{Space}
 }
 ;========================= 公共函数 =========================
 
