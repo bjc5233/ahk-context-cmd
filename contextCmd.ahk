@@ -119,7 +119,7 @@ HotKeyConfControl() {
 }
 HotKeyConfWave() {
     Input, inputCmd, V T10, {vkC0},
-    if (!inputCmd)
+    if (!inputCmd || InStr(inputCmd, "`n", true))             ;如输入文本为空\输入文本中包含换行, 则不是有效命令
         return
     InputCmdMode := "hotkey"
     InputCmdExec(inputCmd)
@@ -413,7 +413,7 @@ InputCmdExec(inputCmd) {
         }
     } else if (inputCmdKey == "get") {
         needBackKeyCount := StrLen(inputCmd) + 2    ;``符号也需要计算在退格值内，自加2
-        WinGet, inputCmdCurWinId2, ID, A  ;窗口发生变化时，在新窗口中不处理退格
+        WinGet, inputCmdCurWinId2, ID, A            ;窗口发生变化时，在新窗口中不处理退格
         isWinChanged := (inputCmdCurWinId == inputCmdCurWinId2 ? false : true)
         
         ;常量替换
