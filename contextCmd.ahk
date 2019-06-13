@@ -198,7 +198,7 @@ InputCmdSubmitHandler(CtrlHwnd, GuiEvent, EventInfo) {
         LV_GetText(inputCmd, rowNum, 1)
     }
     Gui, InputCmdBar:Hide
-    InputCmdLastValue := inputCmd    
+    InputCmdLastValue := inputCmd
     InputCmdExec(inputCmd)
     InputCmdBarExist := false
     Config.InputCmdLastValue := inputCmd
@@ -380,7 +380,7 @@ InputCmdExec(inputCmd) {
     
     cmdId := topChildCmds[inputCmdValue]
     if (!cmdId) {
-        tip("未找到匹配的命令")
+        TryExecMatchedCmdWhenMissing("未找到匹配的命令!")
         return
     }
     cmdObj := ICBIdCmdObjMap[cmdId]
@@ -489,7 +489,7 @@ ExecNativeCmd(inputCmdKey, inputCmdValue:="", inputCmdValueExtra:="") {
         inputCmd := inputCmdKey ".bat " inputCmdValue " " inputCmdValueExtra
         run, %inputCmd%,, UseErrorLevel
         if (ErrorLevel == "ERROR") {
-            Tip("找不到指定的命令 !")
+            TryExecMatchedCmdWhenMissing("找不到指定的命令!")
             return
         }
     }
@@ -527,6 +527,22 @@ ExecBuildInCmd(inputCmdKey, inputCmdValue, inputCmdValueExtra:="") {
         gosub, GuiInputCmdBar
     } else if (inputCmdValue == "exit") {
         MenuTrayExit()
+    }
+}
+
+
+
+;当找不到命令时, 尝试从InputCmdLV加载第一个命令, 仍然失败则提示用户
+TryExecMatchedCmdWhenMissing(msg) {
+    if (LV_GetCount()) {
+        LV_GetText(inputCmd, 1, 1)
+        LV_Delete()        ;删除InputCmdLV中全部行, 防止递归调用
+        InputCmdLastValue := inputCmd
+        InputCmdExec(inputCmd)
+        InputCmdBarExist := false
+        Config.InputCmdLastValue := inputCmd
+    } else {
+        Tip(msg)
     }
 }
 ;========================= 输入Bar =========================
