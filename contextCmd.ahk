@@ -527,6 +527,8 @@ ExecBuildInCmd(inputCmdKey, inputCmdValue, inputCmdValueExtra:="") {
         gosub, GuiInputCmdBar
     } else if (inputCmdValue == "exit") {
         MenuTrayExit()
+    } else {
+        TryExecMatchedCmdWhenMissing("未找到匹配的内建命令!")
     }
 }
 
