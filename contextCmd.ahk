@@ -160,10 +160,10 @@ GuiInputCmdBar:
     Gui, InputCmdBar:Margin, 5, 5
     Gui, InputCmdBar:Color, %themeBgColor%, %themeBgColor%
     Gui, InputCmdBar:Font, c%themeFontColor% s16 wbold, Microsoft YaHei
-    Gui, InputCmdBar:Add, Edit, w450 h38 vInputCmdEdit gInputCmdEditHandler, %InputCmdLastValue%
+    Gui, InputCmdBar:Add, Edit, w490 h38 vInputCmdEdit gInputCmdEditHandler, %InputCmdLastValue%
     Gui, InputCmdBar:Font, s10 -w, Microsoft YaHei
-    Gui, InputCmdBar:Add, ListView, AltSubmit -Hdr -Multi ReadOnly w450 r9 vInputCmdLV gInputCmdLVHandler, cmd|name
-    Gui, InputCmdBar:Font, s8, Microsoft YaHei
+    Gui, InputCmdBar:Add, ListView, AltSubmit -Hdr -Multi ReadOnly w490 r9 vInputCmdLV gInputCmdLVHandler, cmd|name
+    Gui, InputCmdBar:Font, s7, Microsoft YaHei
     Gui, InputCmdBar:Add, Text, xm+5 w450 vInputCmdMatchText
     Gui, InputCmdBar:Add, Button, Default w0 h0 Hidden gInputCmdSubmitHandler
     
@@ -174,9 +174,9 @@ GuiInputCmdBar:
     guiY := A_ScreenHeight/2 - 150
     Winset, Transparent, 238
     if (themeX && themeY) {
-        Gui, InputCmdBar:Show, w460 h48 x%themeX% y%themeY%
+        Gui, InputCmdBar:Show, w500 h48 x%themeX% y%themeY%
     } else {
-        Gui, InputCmdBar:Show, w460 h48 xCenter y%guiY%
+        Gui, InputCmdBar:Show, w500 h48 xCenter y%guiY%
     }
     LV_ModifyCol(1, 180)
     LV_ModifyCol(2, 250)
@@ -1365,7 +1365,7 @@ DBSystemCmdIncreaseHit(systemCmdId) {
 }
 
 DBHistoryCmdFind() {
-    return Query("select id, name, cmd from historyCmd order by id DESC limit 40")
+    return Query("select id, name, cmd from historyCmd order by id DESC limit 50")
 }
 DBHistoryCmdNew(historyCmdObj) {
     resultSet := QueryOne("select ifnull(max(id) + 1, 1) as historyCmdId from historyCmd")
