@@ -106,9 +106,11 @@ print("contextCmd is working")
 
 
 ;========================= 配置热键 =========================
+#R:: 
 MButton::   gosub, GuiInputCmdBar
 ~RControl:: HotKeyConfControl()
 ~`::        HotKeyConfWave()
+^!R::       OpenRunDialog()   ;Win+R被占用, 使用Ctrl+Alt+R应对运行对话框临时使用
 
 global InputCmdMode :=
 global HotKeyControlCount := 0
@@ -1277,6 +1279,10 @@ ActiveEnglishKeyboard() {
 }
 ActiveEnglishKeyboard2() {
     Send, #{Space}
+}
+OpenRunDialog() {
+    runPath:=A_AppData . "\Microsoft\Windows\Start Menu\Programs\System Tools\run.lnk"
+    run, %runPath%
 }
 ;========================= 公共函数 =========================
 
