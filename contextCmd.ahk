@@ -394,7 +394,8 @@ InputCmdExec(inputCmd) {
     exec := cmdObj.exec
     if (!exec)
         return
-    execLangFlag := InStr(exec, "execLang=", true)
+    execLangFlag := InStr(exec, "execLang=", true)      ;检查当前的脚本语言类型 bat\ahk
+    execWinMode := "normal"
     if (execLangFlag) {
         RegExMatch(exec, "U)execLang=.*\s", execLang)
         execLang := RegExReplace(StrReplace(execLang, "execLang="), "\s?")
@@ -402,16 +403,22 @@ InputCmdExec(inputCmd) {
         FileDelete, %execLangPath%
         FileEncoding
         FileAppend, %exec%, %execLangPath%
+        if (InStr(exec, "execWinMode=", true)) {          ;检查当前的脚本运行窗口模式 max\min\normal\hide, 默认值为normal
+            RegExMatch(exec, "U)execWinMode=.*\s", execWinMode)
+            execWinMode := RegExReplace(StrReplace(execWinMode, "execWinMode="), "\s?")
+        } else {
+            execWinMode := "hide"
+        }
     }
     
     if (inputCmdKey == "g") {
         if (execLangFlag) {
             if (inputCmdValueExtra)
-                run, %execLangPath% %inputCmdValueExtra%
+                run, %execLangPath% %inputCmdValueExtra%, , %execWinMode%
             else
-                run, %execLangPath%
+                run, %execLangPath%, ,  %execWinMode%
         } else {
-            run, %exec%
+            run, %exec%, ,  %execWinMode%
         }
     } else if (inputCmdKey == "get") {
         needBackKeyCount := StrLen(inputCmd) + 2    ;``符号也需要计算在退格值内，自加2
@@ -425,7 +432,7 @@ InputCmdExec(inputCmd) {
         }
 
         if (execLangFlag) {
-            RunWait, %execLangPath% %inputCmdValueExtra%
+            RunWait, %execLangPath% %inputCmdValueExtra%, , %execWinMode%
             if (InputCmdMode == "hotkey") {
                 if (isWinChanged)
                     SendInput, ^v
@@ -445,17 +452,17 @@ InputCmdExec(inputCmd) {
 
     } else if (inputCmdKey == "do") {
         if (execLangFlag) {
-            run, %execLangPath% %inputCmdValueExtra%
+            run, %execLangPath% %inputCmdValueExtra%, , %execWinMode%
         } else {
-            run, %exec%
+            run, %exec%, , %execWinMode%
         }
         
     } else if (inputCmdKey == "q") {
         if (execLangFlag) {
-            run, %execLangPath% %inputCmdValueExtra%
+            run, %execLangPath% %inputCmdValueExtra%, , %execWinMode%
         } else {
             exec := "tencent://message/?uin=" exec
-            run, %exec%
+            run, %exec%, , %execWinMode%
         }
     }
     
