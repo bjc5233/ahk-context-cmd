@@ -55,6 +55,7 @@
 5. 每周五展示历史输入命令排行榜[前二十]；创建内部指令统计当前命令hitting次数排行榜
 6. 选取文本，此时再点击鼠标中键\Ctrl+Ctrl    处理选中文本 - 搜索\查询单词
 7. 新增命令属性[窗口类型], 取值[min max normal hide], 默认值为normal; 此时修改删除临时变量execWinMode
+8. 新顶级命令 => c 代码片段读取    参考项目[ahk-context-code](https://github.com/bjc5233/ahk-context-code)      需要支持第二层级命令提示
 
 
 ### 演示

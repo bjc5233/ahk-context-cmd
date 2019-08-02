@@ -489,9 +489,9 @@ ExecNativeCmd(inputCmdKey, inputCmdValue:="", inputCmdValueExtra:="") {
     if (!inputCmdKey)
         return
     inputCmd := inputCmdKey
-    if (inputCmdValue)
+    if (StrLen(inputCmdValue))      ;注意: 此处必须通过StrLen来判断参数是否存在, 因此存在如下情况：[param=0   if(param)为false]
         inputCmd .= " " inputCmdValue
-    if (inputCmdValueExtra)
+    if (StrLen(inputCmdValueExtra))
         inputCmd .= " " inputCmdValueExtra
     run, %inputCmd%,, UseErrorLevel
     if (ErrorLevel == "ERROR") {
