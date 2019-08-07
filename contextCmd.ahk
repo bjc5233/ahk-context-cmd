@@ -52,10 +52,10 @@
 ;  3. 当命令命中次数到达阀值[ICBCmdHitThreshold\ICBSystemCmdHitThreshold], 将重新构建ICB变量, 使得命中次数多的命令可以在匹配结果中更加靠前
 
 ;========================= 环境配置 =========================
-#Persistent
 #NoEnv
-#SingleInstance, Force
+#Persistent
 #ErrorStdOut
+#SingleInstance, Force
 #HotkeyInterval 1000
 SetBatchLines, 10ms
 DetectHiddenWindows, On
@@ -141,6 +141,7 @@ global InputCmdMatchText :=
 global InputCmdLastValue :=
 ;GuiInputCmdBar未采用函数调用原因: AeroGlass在函数模式未生效
 GuiInputCmdBar:
+    ;if (WinExist("contextCmd.ahk ahk_class AutoHotkeyGUI")) {}
     if (InputCmdBarExist) {
         Gui, InputCmdBar:Default
         Gui, InputCmdBar:Submit, NoHide
@@ -1137,9 +1138,9 @@ PrepareSystemCmdData() {
                     if (!fileDesc)
                         fileDesc := FileGetDesc(filePath)
                 } else if (fileExt == "bat") {
-                    FileRead, fileContent, filePath
+                    FileRead, fileContent, %filePath%
                     RegExMatch(fileContent, "U)title\s.*\s", fileDesc)
-                    fileDesc := StrReplace(StrReplace(fileDesc, "title "), "&")
+                    fileDesc := StrReplace(StrReplace(StrReplace(fileDesc, "title "), "&"), "`r")
                 } else if (fileExt == "vbs" || fileExt == "swf" || fileExt == "ahk") {
                     fileDesc := fileName
                 } else {
