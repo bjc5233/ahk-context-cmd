@@ -531,6 +531,8 @@ ExecBuildInCmd(inputCmdKey, inputCmdValue, inputCmdValueExtra:="") {
         GuiTV()
     } else if (inputCmdValue == "history") {
         return
+    }  else if (inputCmdValue == "clearCache") {
+        FileDelete, cache\*
     } else if (inputCmdValue == "reload") {
         MenuTrayReload()
     } else if (inputCmdValue == "quit") {
@@ -984,7 +986,8 @@ PrepareICBData() {
     ICBBuildInCmdMap := new OrderedArray()
     ICBBuildInCmdMap["theme"] := "切换主题[random\auto\blur\custom]"
     ICBBuildInCmdMap["tree"] := "编辑命令树"
-    ICBBuildInCmdMap["history"] := "历史命令"
+    ICBBuildInCmdMap["history"] := "历史命令"           ;目前用处不明
+    ICBBuildInCmdMap["clearCache"] := "清空cache目录"   ;脚本类型命令会在cache目录生成缓存, 当修改了脚本类型命令后, 需要清空此目录
     ICBBuildInCmdMap["reload"] := "重启脚本"
     ICBBuildInCmdMap["quit"] := "关闭界面"
     ICBBuildInCmdMap["exit"] := "退出脚本"
@@ -1395,7 +1398,7 @@ DBHistoryCmdNew(historyCmdObj) {
 
 ;========================= DB-Base =========================
 DBConnect() {
-	connectionString := A_ScriptDir "\contextCmd.db"
+	connectionString := A_ScriptDir "\ContextCmd.db"
 	try {
 		CurrentDB := DBA.DataBaseFactory.OpenDataBase("SQLite", connectionString)
 	} catch e
