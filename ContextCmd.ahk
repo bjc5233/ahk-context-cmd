@@ -8,7 +8,7 @@
 ;    => get 快捷复制命令
 ;    => q   qq联系人跳转
 ;    => do  综合性处理命令
-;    => -   contextCmd内建指令【theme[切换主题] tree[编辑命令树] history[历史命令] reload[重启脚本] quit[关闭界面] exit[退出脚本]】 
+;    => -   contextCmd内建指令【theme[切换主题] tree[编辑命令树] history[历史命令] clearCache[清除缓存] reload[重启脚本] quit[关闭界面] exit[退出脚本]】 
 ;    => 其他系统级别的命令、快捷方式 【calc notepad...】
 ;  主题说明
 ;    1.auto模式(默认), 根据系统当前壁纸配置颜色, 窗口位置中间【需要第三方命令行工具imagemagick-convert.exe】
@@ -419,7 +419,11 @@ InputCmdExec(inputCmd) {
             else
                 run, %execLangPath%, ,  %execWinMode%
         } else {
-            run, %exec%, ,  %execWinMode%
+            try {
+                run, %exec%, ,  %execWinMode%
+            } catch e {
+                Tip(RegExReplace(e.Extra, "。$", ""))
+            }
         }
     } else if (inputCmdKey == "get") {
         needBackKeyCount := StrLen(inputCmd) + 2    ;``符号也需要计算在退格值内，自加2
@@ -1230,7 +1234,7 @@ FileGetDesc(lptstrFilename) {
 }
 
 ImgGetDominantColor(imgPath) {
-    rgb := StdoutToVar_CreateProcess("C:\path\bat\batlearn\loadExes\imagemagick\imagemagick-convert.exe """ imgPath """ -scale 1x1 -format %[pixel:u] info:-")
+    rgb := StdoutToVar_CreateProcess("resources\imagemagick\imagemagick-convert.exe """ imgPath """ -scale 1x1 -format %[pixel:u] info:-")
     rgb := StrReplace(rgb, "srgb(")
     rgb := StrReplace(rgb, ")")
     rgbArray := StrSplit(rgb, ",")

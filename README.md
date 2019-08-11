@@ -23,18 +23,6 @@
  5. 输入框   - Tab键     - 将候选列表中第一个结果复制到输入框中
 
 
-### 配置自定义命令
-1. 图标右键->修改菜单-> 新增\编辑\删除\保存命令树
-```
- => g   快捷跳转命令
- => get 快捷复制命令
- => q   qq联系人跳转
- => do  综合性处理命令
- => -   contextCmd内建指令【theme[切换主题] tree[编辑命令树] history[历史命令] reload[重启脚本] quit[关闭界面] exit[退出脚本]】 
- => 其他系统级别的命令、快捷方式 【calc notepad...】
-```
-
-
 
 
 ### 演示
@@ -43,6 +31,22 @@
 <div align=center><img src="https://github.com/bjc5233/ahk-context-cmd/raw/master/resources/demo2.png"/></div>
 <div align=center><img src="https://github.com/bjc5233/ahk-context-cmd/raw/master/resources/demo3.png"/></div>
 <div align=center><img src="https://github.com/bjc5233/ahk-context-cmd/raw/master/resources/demo4.png"/></div>
+
+
+
+
+### 配置自定义命令
+1. 图标右键->修改菜单-> 新增\编辑\删除\保存命令树
+```
+ => g   快捷跳转命令
+ => get 快捷复制命令
+ => q   qq联系人跳转
+ => do  综合性处理命令
+ => -   contextCmd内建指令【theme[切换主题] tree[编辑命令树] history[历史命令] clearCache[清除缓存] reload[重启脚本] quit[关闭界面] exit[退出脚本]】 
+ => 其他系统级别的命令、快捷方式 【calc notepad...】
+```
+
+
 
 
 
