@@ -95,6 +95,9 @@ global ICBSystemCmdHitCount := 0
 global ICBSystemCmdHitThreshold := 5
 global ICBBuildInCmdMap := new OrderedArray()
 
+global englishKeyboard := DllCall("LoadKeyboardLayout", "Str", "00000409", "Int", 1)
+
+OnExit("MenuTrayExit")
 MenuTray()
 DBConnect()
 PrepareConfigData()
@@ -150,8 +153,8 @@ GuiInputCmdBar:
         InputCmdBarExist := false
         return
     }
-    ActiveEnglishKeyboard() ;确保当前为英文输入法
-       
+    if (!IsEnglishKeyboard())
+        ActiveEnglishKeyboard() ;确保当前为英文输入法
        
     global InputCmdBarHwnd := "inputCmdBar"
     InputCmdBarExist := true
@@ -159,7 +162,7 @@ GuiInputCmdBar:
     InputCmdLastValue := Config.InputCmdLastValue
     InputCmdBarThemeConf(themeType, themeBgColor, themeFontColor, themeX, themeY)
     OnMessage(0x0201, "WM_LBUTTONDOWN")
-    Gui, InputCmdBar:New, +LastFound -Caption -Border +Owner +AlwaysOnTop +hWnd%InputCmdBarHwnd%
+    Gui, InputCmdBar:New, +LastFound -Caption -Border +Owner +AlwaysOnTop +hWndInputCmdBarHwnd
     Gui, InputCmdBar:Margin, 5, 5
     Gui, InputCmdBar:Color, %themeBgColor%, %themeBgColor%
     Gui, InputCmdBar:Font, c%themeFontColor% s16 wbold, Microsoft YaHei
@@ -170,8 +173,6 @@ GuiInputCmdBar:
     Gui, InputCmdBar:Add, Text, xm+5 w450 vInputCmdMatchText
     Gui, InputCmdBar:Add, Button, Default w0 h0 Hidden gInputCmdSubmitHandler
     
-    if (!IsEnglishKeyboard())
-        ActiveEnglishKeyboard2() ;show之前再次确保当前为英文输入法
     
     guiX := 10
     guiY := A_ScreenHeight/2 - 150
@@ -931,9 +932,11 @@ MenuTrayReload(ItemName:="", ItemPos:="", MenuName:="") {
     Reload
 }
 MenuTrayExit(ItemName:="", ItemPos:="", MenuName:="") {
-    Config.delete("theme")
-    DBConfigUpdate(Config)
-    CurrentDB.Close()
+    if (!CurrentDB.IsValid()) {
+        Config.delete("theme")
+        DBConfigUpdate(Config)
+        CurrentDB.Close()
+    }
     Gui, GuiTV:Destroy
     Gui, InputCmdBar:Destroy
     ExitApp
@@ -1284,16 +1287,12 @@ StdoutToVar_CreateProcess(sCmd, sEncoding:="CP0", sDir:="", ByRef nExitCode:=0) 
 }
 
 IsEnglishKeyboard() {
-    keyboardName :=
-    VarSetCapacity(keyboardName, 50)
-    DllCall("GetKeyboardLayoutName", "Str", keyboardName)
-    return (keyboardName == "00000409")
+    keyboardName := DllCall("GetKeyboardLayout", Int, DllCall("GetWindowThreadProcessId", int, WinExist("A"), Int, 0))
+    return (keyboardName == englishKeyboard)
 }
-ActiveEnglishKeyboard() {
-    DllCall("SendMessage", UInt, WinActive("A"), UInt, 80, UInt, 1, UInt, DllCall("LoadKeyboardLayout", Str, "00000409", UInt, 1))
-}
-ActiveEnglishKeyboard2() {
-    Send, #{Space}
+ActiveEnglishKeyboard(){
+  print("ActiveEnglishKeyboard")
+  PostMessage, 0x50, 0, englishKeyboard,,  A
 }
 OpenRunDialog() {
     runPath:=A_AppData . "\Microsoft\Windows\Start Menu\Programs\System Tools\run.lnk"
