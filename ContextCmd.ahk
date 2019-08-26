@@ -110,10 +110,10 @@ print("contextCmd is working")
 
 ;========================= 配置热键 =========================
 #R:: 
-MButton::   gosub, GuiInputCmdBar
-~RControl:: HotKeyConfControl()
+MButton::   gosub, GuiInputCmdBar ;鼠标中键
+~RControl:: HotKeyConfControl()   ;双击右Ctrl键[左Ctrl键经常需要执行保存复制粘贴等快捷键操作, 很容易误触发]
 ~`::        HotKeyConfWave()
-^!R::       OpenRunDialog()   ;Win+R被占用, 使用Ctrl+Alt+R应对运行对话框临时使用
+^!R::       OpenRunDialog()       ;Win+R被占用, 使用Ctrl+Alt+R应对运行对话框临时使用
 
 global InputCmdMode :=
 global HotKeyControlCount := 0
@@ -124,7 +124,8 @@ HotKeyConfControl() {
 }
 HotKeyConfWave() {
     Input, inputCmd, V T10, {vkC0},
-    if (!inputCmd || InStr(inputCmd, "`n", true))             ;如输入文本为空\输入文本中包含换行, 则不是有效命令
+    ;如果ErrorLevel值必须以EndKey开头; 如果输入文本中包含换行, 则不是有效命令
+    if (!inputCmd || !RegExMatch(ErrorLevel, "^EndKey") || InStr(inputCmd, "`n", true))
         return
     InputCmdMode := "hotkey"
     InputCmdExec(inputCmd)
