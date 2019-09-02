@@ -1,5 +1,5 @@
 # ahk-context-cmd
-> 效率工具，快捷命令助手, 快速跳转界面、执行命令
+> 效率工具，快捷命令助手，快速跳转界面、执行命令
 
 
 ### 使用方法
@@ -55,14 +55,12 @@
 
 
 ### TODO
-1. 当输入无法匹配命令，会根据当前输入key和所有key进行字符串相似度比较, 提供猜测建议
-2. 命令匹配模式[startWith] ==> [containsWith]
-3. 对第二层级命令进行提示[g ziliao mobile]中的mobile
-4. 每周五展示历史输入命令排行榜[前二十]；创建内部指令统计当前命令hitting次数排行榜
-5. 新增命令属性[窗口类型], 取值[min max normal hide], 默认值为normal; 此时修改删除临时变量execWinMode
-6. 新顶级命令 => c 代码片段读取    参考项目[ahk-context-code](https://github.com/bjc5233/ahk-context-code)      需要支持第二层级命令提示
-7. 脚本在启动时会将系统path目录中的所有命令及其注释保存到DB，但命令可能会被修改(如bat标题、lnk备注信息)。因此需要DB记录命令的修改时间，脚本启动后检查命令时间是否有变化，有则更新
-
+1. 对第二层级命令进行提示[g ziliao mobile]中的mobile
+2. 每周五展示历史输入命令排行榜[前二十]；创建内部指令统计当前命令hitting次数排行榜
+3. 新增命令属性[窗口类型], 取值[min max normal hide], 默认值为normal; 此时修改删除临时变量execWinMode
+4. 新顶级命令 => c 代码片段读取    参考项目[ahk-context-code](https://github.com/bjc5233/ahk-context-code)      需要支持第二层级命令提示
+5. 脚本在启动时会将系统path目录中的所有命令及其注释保存到DB，但命令可能会被修改(如bat标题、lnk备注信息)。因此需要DB记录命令的修改时间，脚本启动后检查命令时间是否有变化，有则更新
+6. 提升命令匹配速度
 
 
 

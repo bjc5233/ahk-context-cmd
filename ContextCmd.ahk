@@ -131,6 +131,9 @@ HotKeyConfWave() {
         return
     InputCmdMode := "hotkey"
     InputCmdExec(inputCmd)
+    InputCmdLastValue := inputCmd
+    Config.InputCmdLastValue := inputCmd
+    DBConfigLastCmdUpdate(Config.id, inputCmd)
 }
 ;========================= 配置热键 =========================
 
@@ -203,10 +206,11 @@ InputCmdSubmitHandler(CtrlHwnd, GuiEvent, EventInfo) {
         LV_GetText(inputCmd, rowNum, 1)
     }
     Gui, InputCmdBar:Hide
-    InputCmdLastValue := inputCmd
     InputCmdExec(inputCmd)
     InputCmdBarExist := false
+    InputCmdLastValue := inputCmd
     Config.InputCmdLastValue := inputCmd
+    DBConfigLastCmdUpdate(Config.id, inputCmd)
 }
 
 InputCmdBarGuiEscape:
@@ -230,9 +234,8 @@ InputCmdEditHandler(CtrlHwnd:="", GuiEvent:="", EventInfo:="") {
             LV_Add(, historyCmd.cmd, historyCmd.name)
         }
     } else if (RegExMatch(inputCmd, "^-")) {
-        regExStr := "i)^" inputCmd
         for cmdName, cmdDesc in ICBBuildInCmdMap {
-            if (RegExMatch(cmdName, regExStr)) {
+            if (InStr(cmdName, inputCmd)) {
                 if (cmdName == inputCmd)
                     LV_Insert(1, , cmdName, cmdDesc)
                 else
@@ -240,9 +243,8 @@ InputCmdEditHandler(CtrlHwnd:="", GuiEvent:="", EventInfo:="") {
             }  
         }
     } else if (inputCmdArrayLen == 1) {
-        regExStr := "i)^" inputCmd
         for systemCmdName, systemCmdObj in ICBSystemCmdMap {
-            if (RegExMatch(systemCmdName, regExStr)) {
+            if (InStr(systemCmdName, inputCmd)) {
                 if (systemCmdName == inputCmd)
                     LV_Insert(1, , systemCmdName, systemCmdObj.desc)
                 else
@@ -260,9 +262,8 @@ InputCmdEditHandler(CtrlHwnd:="", GuiEvent:="", EventInfo:="") {
             return
         
         inputCmdValue := inputCmdArray[2]
-        regExStr := "i)^" inputCmdValue
         for cmdKey, cmdId in topChildCmds {
-            if (RegExMatch(cmdKey, regExStr)) {
+            if (InStr(cmdKey, inputCmdValue)) {
                 if (cmdKey == inputCmdValue)
                     LV_Insert(1, , inputCmdKey " " cmdKey, ICBIdCmdObjMap[cmdId].name)
                 else
@@ -560,10 +561,11 @@ TryExecMatchedCmdWhenMissing(msg) {
     if (LV_GetCount()) {
         LV_GetText(inputCmd, 1, 1)
         LV_Delete()        ;删除InputCmdLV中全部行, 防止递归调用
-        InputCmdLastValue := inputCmd
         InputCmdExec(inputCmd)
         InputCmdBarExist := false
+        InputCmdLastValue := inputCmd
         Config.InputCmdLastValue := inputCmd
+        DBConfigLastCmdUpdate(Config.id, inputCmd)
     } else {
         Tip(msg)
     }
@@ -897,7 +899,7 @@ TVSearchEditHandler(CtrlHwnd, GuiEvent, EventInfo) {
     searchStr := Trim(TVSearchEdit)
     for cmdId, cmdObj in TVIdCmdObjMap {
         curCmd := cmdObj.cmd
-        if (RegExMatch(curCmd, searchStr)) {
+        if (InStr(curCmd, searchStr)) {
             parentCmdObj := TVIdCmdObjMap[cmdObj.pid]
             parentCmdObjName := (parentCmdObj ? parentCmdObj.name : "")
             topParentCmdObj := TVIdCmdObjMap[cmdObj.topPid]
@@ -1214,7 +1216,7 @@ PrepareSystemCmdData() {
 }
 
 WM_LBUTTONDOWN(wParam, lParam, msg, hWnd) {
-    if (hWnd = %InputCmdBarHwnd%)
+    if (hWnd == InputCmdBarHwnd)
 		DllCall("user32.dll\PostMessage", "Ptr", hWnd, "UInt", 0xA1, "Ptr", 2, "Ptr", 0)
 }
 EnableBlur(hWnd) {
@@ -1320,6 +1322,10 @@ DBConfigFind() {
 DBConfigUpdate(configObj) {
     flag := CurrentDB.Update(configObj, "config")
     return flag
+}
+DBConfigLastCmdUpdate(id, lastCmd) {
+    affectedRows := CurrentDB.Query("update config set InputCmdLastValue = '" lastCmd "' where id = " id)
+    return affectedRows
 }
 DBCmdFind() {
     return Query("select id, name, cmd, exec, treeSort, hit, pid, topPid from cmd order by pid, treeSort")
