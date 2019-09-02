@@ -2,25 +2,33 @@
 ;  效率工具，上下文环境命令助手
 ;    启用方式1： 监听``之间输入的命令 {在任何环境下都可以检测到【输入框\桌面】}
 ;    启用方式2： 双击Ctrl弹出输入框，输入命令
-;  配置说明
+;配置说明
 ;    图标右键->修改菜单-> 新增\编辑\删除\保存命令树
 ;    => g   快捷跳转命令
 ;    => get 快捷复制命令
 ;    => q   qq联系人跳转
 ;    => do  综合性处理命令
-;    => -   contextCmd内建指令【theme[切换主题] tree[编辑命令树] history[历史命令] clearCache[清除缓存] reload[重启脚本] quit[关闭界面] exit[退出脚本]】 
-;    => 其他系统级别的命令、快捷方式 【calc notepad...】
-;  主题说明
+;    => -   内建命令
+;           -theme      切换主题
+;           -tree       编辑命令树
+;           -history    历史命令
+;           -clearCache 清除缓存
+;           -reload     重启脚本
+;           -quit       关闭界面
+;           -exit       退出脚本
+;    => 其他系统级别的命令、快捷方式[eg: calc notepad...]
+;主题说明
 ;    1.auto模式(默认), 根据系统当前壁纸配置颜色, 窗口位置中间【需要第三方命令行工具imagemagick-convert.exe】
 ;    2.blur模式, AeroGlass风格, 由于在偏白色背景下无法看清文字, 因此位置放置在左下角
 ;    3.custom模式, 配置的固定几种颜色风格, 每次展示时随机颜色风格, 窗口位置中间
-;  输入框界面快捷键说明
+;    4.random模式, 随机1-3模式
+;输入框界面快捷键说明
 ;    1.总界面   - F1键      - 打开命令树管理
 ;    2.总界面   - Esc键     - 关闭
 ;    3.候选列表 - Up\Down键 - 在输入框\候选命令列表上下移动
 ;    4.候选列表 - Right键   - 将当前选中的命令复制到输入框中
 ;    5.输入框   - Tab键     - 将候选列表中第一个结果复制到输入框中
-;  DB表字段说明
+;DB表字段说明
 ;    1.config表 
 ;       [InputCmdLastValue 输入框上次值]
 ;       [LastWallpaperColor 上次壁纸主色调]
@@ -44,13 +52,6 @@
 ;    3.historyCmd表 
 ;       [name 名称]
 ;       [cmd 命令名]
-;备注
-;  1. {vkC0}表示`
-;  2. 配置命令的[执行]文本框中, 在第一行输入[目标语言注释符号 $execLang= 目标语言$]格式, 
-;       ::$execLang=bat$
-;     会将此文本框文本保存到bat文件, 并执行该bat
-;  3. 当命令命中次数到达阀值[ICBCmdHitThreshold\ICBSystemCmdHitThreshold], 将重新构建ICB变量, 使得命中次数多的命令可以在匹配结果中更加靠前
-
 ;========================= 环境配置 =========================
 #NoEnv
 #Persistent
@@ -94,16 +95,17 @@ global ICBSystemCmdMap := new OrderedArray()
 global ICBSystemCmdHitCount := 0
 global ICBSystemCmdHitThreshold := 5
 global ICBBuildInCmdMap := new OrderedArray()
-
 global englishKeyboard := DllCall("LoadKeyboardLayout", "Str", "00000409", "Int", 1)
 
+
+printClear()
 OnExit("MenuTrayExit")
 MenuTray()
 DBConnect()
 PrepareConfigData()
 PrepareICBData()
 PrepareSystemCmdData()
-print("contextCmd is working")
+print("ContextCmd is working")
 ;========================= 初始化 =========================
 
 
@@ -123,7 +125,7 @@ HotKeyConfControl() {
         gosub, GuiInputCmdBar
 }
 HotKeyConfWave() {
-    Input, inputCmd, V T10, {vkC0},
+    Input, inputCmd, V T10, {vkC0},     ;{vkC0}表示`
     ;如果ErrorLevel值必须以EndKey开头; 如果输入文本中包含换行, 则不是有效命令
     if (!inputCmd || !RegExMatch(ErrorLevel, "^EndKey") || InStr(inputCmd, "`n", true))
         return
@@ -173,20 +175,18 @@ GuiInputCmdBar:
     Gui, InputCmdBar:Font, s7, Microsoft YaHei
     Gui, InputCmdBar:Add, Text, xm+5 w450 vInputCmdMatchText
     Gui, InputCmdBar:Add, Button, Default w0 h0 Hidden gInputCmdSubmitHandler
-    
+    Winset, Transparent, 238
+    if (themeType == "blur")
+        EnableBlur(InputCmdBarHwnd)
     
     guiX := 10
     guiY := A_ScreenHeight/2 - 150
-    Winset, Transparent, 238
-    if (themeX && themeY) {
+    if (themeX && themeY)
         Gui, InputCmdBar:Show, w500 h48 x%themeX% y%themeY%
-    } else {
+    else
         Gui, InputCmdBar:Show, w500 h48 xCenter y%guiY%
-    }
     LV_ModifyCol(1, 180)
     LV_ModifyCol(2, 250)
-    if (themeType == "blur")
-        EnableBlur(InputCmdBarHwnd)
     InputCmdEditHandler()
 return
 
@@ -225,40 +225,47 @@ InputCmdEditHandler(CtrlHwnd:="", GuiEvent:="", EventInfo:="") {
     inputCmd := RegExReplace(LTrim(InputCmdEdit), "\s+", " ")      ;去除首位空格, 将字符串内多个连续空格替换为单个空格
     inputCmdArray := StrSplit(inputCmd, A_Space)
     inputCmdArrayLen := inputCmdArray.Length()
-    if (!inputCmd || inputCmd == " " || inputCmd == "- history") {
+    if (!inputCmd || inputCmd == " " || inputCmd == "-history") {
         for index, historyCmd in ICBHistoryCmds {
             LV_Add(, historyCmd.cmd, historyCmd.name)
         }
+    } else if (RegExMatch(inputCmd, "^-")) {
+        regExStr := "i)^" inputCmd
+        for cmdName, cmdDesc in ICBBuildInCmdMap {
+            if (RegExMatch(cmdName, regExStr)) {
+                if (cmdName == inputCmd)
+                    LV_Insert(1, , cmdName, cmdDesc)
+                else
+                    LV_Add(, cmdName, cmdDesc)
+            }  
+        }
     } else if (inputCmdArrayLen == 1) {
-        if (inputCmd == "-") {
-            for cmdName, cmdDesc in ICBBuildInCmdMap {
-                if (RegExMatch(cmdName, "i)^" inputCmdValue))
-                    LV_Add(, "- " cmdName, cmdDesc)
-            }
-        } else {
-            for systemCmdName, systemCmdObj in ICBSystemCmdMap {
-                if (RegExMatch(systemCmdName, "i)^" inputCmd))
+        regExStr := "i)^" inputCmd
+        for systemCmdName, systemCmdObj in ICBSystemCmdMap {
+            if (RegExMatch(systemCmdName, regExStr)) {
+                if (systemCmdName == inputCmd)
+                    LV_Insert(1, , systemCmdName, systemCmdObj.desc)
+                else
                     LV_Add(, systemCmdName, systemCmdObj.desc)
             }
         }
-    } else if (inputCmdArrayLen  >= 2) {
+    } else if (inputCmdArrayLen >= 2) {
         inputCmdKey := inputCmdArray[1]
         inputCmdValue := inputCmdArray[2]
-        if (inputCmdKey == "-") {
-            for cmdName, cmdDesc in ICBBuildInCmdMap {
-                if (RegExMatch(cmdName, "i)^" inputCmdValue))
-                    LV_Add(, "- " cmdName, cmdDesc)
-            }
-        } else {
-            topPid := ICBTopPNamePidMap[inputCmdKey]
-            if (!topPid)
-                return
-            topChildCmds := ICBTopPidChildCmdMap[topPid]
-            if (!topChildCmds)
-                return
-            inputCmdValue := inputCmdArray[2]
-            for cmdKey, cmdId in topChildCmds {
-                if (RegExMatch(cmdKey, "i)^" inputCmdValue))
+        topPid := ICBTopPNamePidMap[inputCmdKey]
+        if (!topPid)
+            return
+        topChildCmds := ICBTopPidChildCmdMap[topPid]
+        if (!topChildCmds)
+            return
+        
+        inputCmdValue := inputCmdArray[2]
+        regExStr := "i)^" inputCmdValue
+        for cmdKey, cmdId in topChildCmds {
+            if (RegExMatch(cmdKey, regExStr)) {
+                if (cmdKey == inputCmdValue)
+                    LV_Insert(1, , inputCmdKey " " cmdKey, ICBIdCmdObjMap[cmdId].name)
+                else
                     LV_Add(, inputCmdKey " " cmdKey, ICBIdCmdObjMap[cmdId].name)
             }
         }
@@ -355,8 +362,11 @@ InputCmdExec(inputCmd) {
     inputCmdArray := StrSplit(inputCmd, A_Space)
     inputCmdArrayLen := inputCmdArray.Length()
     if (inputCmdArrayLen == 1) {
-        ExecNativeCmd(inputCmd)
-        return
+        if (RegExMatch(inputCmd, "^-"))
+            return ExecBuildInCmd(inputCmd)
+        else
+            return ExecNativeCmd(inputCmd)
+        
     } else if (inputCmdArrayLen >= 2) {
         inputCmdKey := inputCmdArray[1]
         inputCmdValue := inputCmdArray[2]
@@ -367,10 +377,8 @@ InputCmdExec(inputCmd) {
     }
     if (!inputCmdKey)
         return
-    if (inputCmdKey == "-") {
-        ExecBuildInCmd(inputCmdKey, inputCmdValue, inputCmdValueExtra)
-        return
-    }
+    if (RegExMatch(inputCmdKey, "^-"))
+        return ExecBuildInCmd(inputCmdKey, inputCmdValue, inputCmdValueExtra)
     
     topPid := ICBTopPNamePidMap[inputCmdKey]
     if (!topPid) {
@@ -384,10 +392,9 @@ InputCmdExec(inputCmd) {
     }
     
     cmdId := topChildCmds[inputCmdValue]
-    if (!cmdId) {
-        TryExecMatchedCmdWhenMissing("未找到匹配的命令!")
-        return
-    }
+    if (!cmdId)
+        return TryExecMatchedCmdWhenMissing("未找到匹配的命令!")
+        
     cmdObj := ICBIdCmdObjMap[cmdId]
     if (!cmdObj)
         return
@@ -414,7 +421,7 @@ InputCmdExec(inputCmd) {
         }
     }
     
-    if (inputCmdKey == "g") {
+    if (inputCmdKey == "g" || inputCmdKey == "G") {
         if (execLangFlag) {
             if (inputCmdValueExtra)
                 run, %execLangPath% %inputCmdValueExtra%, , %execWinMode%
@@ -427,7 +434,7 @@ InputCmdExec(inputCmd) {
                 Tip(RegExReplace(e.Extra, "。$", ""))
             }
         }
-    } else if (inputCmdKey == "get") {
+    } else if (inputCmdKey == "get" || inputCmdKey == "Get") {
         needBackKeyCount := StrLen(inputCmd) + 2    ;``符号也需要计算在退格值内，自加2
         WinGet, inputCmdCurWinId2, ID, A            ;窗口发生变化时，在新窗口中不处理退格
         isWinChanged := (inputCmdCurWinId == inputCmdCurWinId2 ? false : true)
@@ -457,14 +464,14 @@ InputCmdExec(inputCmd) {
         }
         InputCmdMode :=
 
-    } else if (inputCmdKey == "do") {
+    } else if (inputCmdKey == "do" || inputCmdKey == "DO") {
         if (execLangFlag) {
             run, %execLangPath% %inputCmdValueExtra%, , %execWinMode%
         } else {
             run, %exec%, , %execWinMode%
         }
         
-    } else if (inputCmdKey == "q") {
+    } else if (inputCmdKey == "q" || inputCmdKey == "Q") {
         if (execLangFlag) {
             run, %execLangPath% %inputCmdValueExtra%, , %execWinMode%
         } else {
@@ -504,10 +511,8 @@ ExecNativeCmd(inputCmdKey, inputCmdValue:="", inputCmdValueExtra:="") {
     if (ErrorLevel == "ERROR") {
         inputCmd := inputCmdKey ".bat " inputCmdValue " " inputCmdValueExtra
         run, %inputCmd%,, UseErrorLevel
-        if (ErrorLevel == "ERROR") {
-            TryExecMatchedCmdWhenMissing("找不到指定的命令!")
-            return
-        }
+        if (ErrorLevel == "ERROR")
+            return TryExecMatchedCmdWhenMissing("找不到指定的命令!")
     }
     
     newHistoryCmdObj := Object()
@@ -525,31 +530,29 @@ ExecNativeCmd(inputCmdKey, inputCmdValue:="", inputCmdValueExtra:="") {
 }
 
 
-
-ExecBuildInCmd(inputCmdKey, inputCmdValue, inputCmdValueExtra:="") {
-    if (inputCmdValue == "theme") {
-        if (!inputCmdValueExtra)
-            return
-        if (inputCmdValueExtra == "random" || inputCmdValueExtra == "auto" || inputCmdValueExtra == "blur" || inputCmdValueExtra == "custom") {
-            Config.themeType := inputCmdValueExtra
-        }
-    } else if (inputCmdValue == "tree") {
+ExecBuildInCmd(inputCmdKey, inputCmdValue:="", inputCmdValueExtra:="") {
+    if (inputCmdKey == "-theme") {
+        if (!inputCmdValue)
+            return Tip("当前主题类型: " Config.themeType)
+        if (inputCmdValue == "random" || inputCmdValue == "auto" || inputCmdValue == "blur" || inputCmdValue == "custom")
+            Config.themeType := inputCmdValue
+        
+    } else if (inputCmdKey == "-tree") {
         GuiTV()
-    } else if (inputCmdValue == "history") {
-        return
-    }  else if (inputCmdValue == "clearCache") {
+    } else if (inputCmdKey == "-history") {
+        TryExecMatchedCmdWhenMissing("历史记录不存在!")
+    } else if (inputCmdKey == "-clearCache") {
         FileDelete, cache\*
-    } else if (inputCmdValue == "reload") {
+    } else if (inputCmdKey == "-reload") {
         MenuTrayReload()
-    } else if (inputCmdValue == "quit") {
+    } else if (inputCmdKey == "-quit") {
         gosub, GuiInputCmdBar
-    } else if (inputCmdValue == "exit") {
+    } else if (inputCmdKey == "-exit") {
         MenuTrayExit()
     } else {
         TryExecMatchedCmdWhenMissing("未找到匹配的内建命令!")
     }
 }
-
 
 
 ;当找不到命令时, 尝试从InputCmdLV加载第一个命令, 仍然失败则提示用户
@@ -893,12 +896,18 @@ TVSearchEditHandler(CtrlHwnd, GuiEvent, EventInfo) {
     LV_Delete()
     searchStr := Trim(TVSearchEdit)
     for cmdId, cmdObj in TVIdCmdObjMap {
-        if (InStr(cmdObj.cmd, searchStr)) {
+        curCmd := cmdObj.cmd
+        if (RegExMatch(curCmd, searchStr)) {
             parentCmdObj := TVIdCmdObjMap[cmdObj.pid]
+            parentCmdObjName := (parentCmdObj ? parentCmdObj.name : "")
             topParentCmdObj := TVIdCmdObjMap[cmdObj.topPid]
-            LV_Add(, cmdId, cmdObj.cmd, cmdObj.name, parentCmdObj.name, topParentCmdObj.name)
+            topParentCmdObjName := (topParentCmdObj ? topParentCmdObj.name : "")
+            if (curCmd == searchStr)
+                LV_Insert(1, , cmdId, curCmd, cmdObj.name, parentCmdObjName, topParentCmdObjName)
+            else
+                LV_Add(, cmdId, curCmd, cmdObj.name, parentCmdObjName, topParentCmdObjName)
         }
-    }
+    } 
 }
 TVSearchLVHandler(CtrlHwnd, GuiEvent, EventInfo) {
 	if (GuiEvent == "DoubleClick") {
@@ -992,13 +1001,13 @@ PrepareICBData() {
     
     ICBHistoryCmds := DBHistoryCmdFind()
     ICBBuildInCmdMap := new OrderedArray()
-    ICBBuildInCmdMap["theme"] := "切换主题[random\auto\blur\custom]"
-    ICBBuildInCmdMap["tree"] := "编辑命令树"
-    ICBBuildInCmdMap["history"] := "历史命令"           ;目前用处不明
-    ICBBuildInCmdMap["clearCache"] := "清空cache目录"   ;脚本类型命令会在cache目录生成缓存, 当修改了脚本类型命令后, 需要清空此目录
-    ICBBuildInCmdMap["reload"] := "重启脚本"
-    ICBBuildInCmdMap["quit"] := "关闭界面"
-    ICBBuildInCmdMap["exit"] := "退出脚本"
+    ICBBuildInCmdMap["-theme"] := "切换主题[random\auto\blur\custom]"
+    ICBBuildInCmdMap["-tree"] := "编辑命令树"
+    ICBBuildInCmdMap["-history"] := "历史命令"           ;预览历史命令(输入为空时也是如此); 执行上一条命令
+    ICBBuildInCmdMap["-clearCache"] := "清空cache目录"   ;脚本类型命令会在cache目录生成缓存, 当修改了脚本类型命令后, 需要清空此目录
+    ICBBuildInCmdMap["-reload"] := "重启脚本"
+    ICBBuildInCmdMap["-quit"] := "关闭界面"
+    ICBBuildInCmdMap["-exit"] := "退出脚本"
     print("PrepareICBData finish...")
 }
 
@@ -1060,11 +1069,14 @@ TVRefresh(ItemName:="", ItemPos:="", MenuName:="") {
 
 
 Array2Str(array) {
-    if (!array || !array.Length())
+    if (!array)
+        return
+    arrayLen := array.Length()
+    if (!arrayLen)
         return
     str := ""
     for index, element in array {
-        if (index == array.Length())
+        if (index == arrayLen)
           str .= element
         else
           str .= element ","
@@ -1224,7 +1236,7 @@ EnableBlur(hWnd) {
     NumPut(WCA_ACCENT_POLICY, WindowCompositionAttributeData, 0, "UInt")
     NumPut(&AccentPolicy, WindowCompositionAttributeData, 4 + padding, "Ptr")
     NumPut(accentStructSize, WindowCompositionAttributeData, 4 + padding + A_PtrSize, "UInt")
-    DllCall("SetWindowCompositionAttribute", "Ptr", %hWnd%, "Ptr", &WindowCompositionAttributeData)
+    DllCall("SetWindowCompositionAttribute", "Ptr", hWnd, "Ptr", &WindowCompositionAttributeData)
 }
 FileGetDesc(lptstrFilename) {
 	dwLen := DllCall("Version.dll\GetFileVersionInfoSize", "Str", lptstrFilename, "Ptr", 0)
@@ -1292,7 +1304,6 @@ IsEnglishKeyboard() {
     return (keyboardName == englishKeyboard)
 }
 ActiveEnglishKeyboard(){
-  print("ActiveEnglishKeyboard")
   PostMessage, 0x50, 0, englishKeyboard,,  A
 }
 OpenRunDialog() {
