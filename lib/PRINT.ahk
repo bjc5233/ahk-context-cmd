@@ -2,7 +2,7 @@ print(text := "") {
 	if (!WinExist("ahk_class SciTEWindow"))
 		return
 	SciObj := ComObjActive("SciTE4AHK.Application")
-	if (text)
+	if (StrLen(text))
 		SciObj.Output(text "`r`n")
 	else
 		SciObj.Output("================================================`r`n")

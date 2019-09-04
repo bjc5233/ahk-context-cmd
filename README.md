@@ -77,3 +77,8 @@ bat注释  将脚本保存为.bat文件  脚本执行时隐藏窗口
 ;execLang=ahk
 ahk注释  将脚本保存为.ahk文件
 ```
+6. DB表结构变更: 
+```
+cmd.cmd->cmd.name; cmd.name->cmd.desc
+historyCmd.cmd->historyCmd.name; historyCmd.name->historyCmd.desc
+```

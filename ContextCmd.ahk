@@ -226,48 +226,54 @@ InputCmdEditHandler(CtrlHwnd:="", GuiEvent:="", EventInfo:="") {
     Gui, InputCmdBar:Submit, NoHide
     Gui, InputCmdBar:Show, h48
     LV_Delete()
-    inputCmd := RegExReplace(LTrim(InputCmdEdit), "\s+", " ")      ;去除首位空格, 将字符串内多个连续空格替换为单个空格
+    inputCmd := RegExReplace(LTrim(InputCmdEdit), "\s+", " ")      ;去除首位空格, 将字符串内多个连续空格替换为单个空格     TODO 这里可能会改变参数
     inputCmdArray := StrSplit(inputCmd, A_Space)
     inputCmdArrayLen := inputCmdArray.Length()
-    if (!inputCmd || inputCmd == " " || inputCmd == "-history") {
-        for index, historyCmd in ICBHistoryCmds {
-            LV_Add(, historyCmd.cmd, historyCmd.name)
+    inputCmdP1 := inputCmdArray[1]
+    if (!inputCmdP1 || inputCmdP1 == " " || inputCmdP1 == "-history") {
+        ;处理历史命令
+        for index, cmdObj in ICBHistoryCmds {
+            LV_Add(, cmdObj.cmd, cmdObj.name)
         }
-    } else if (RegExMatch(inputCmd, "^-")) {
-        for cmdName, cmdDesc in ICBBuildInCmdMap {
-            if (InStr(cmdName, inputCmd)) {
-                if (cmdName == inputCmd)
-                    LV_Insert(1, , cmdName, cmdDesc)
-                else
-                    LV_Add(, cmdName, cmdDesc)
-            }  
-        }
-    } else if (inputCmdArrayLen == 1) {
-        for systemCmdName, systemCmdObj in ICBSystemCmdMap {
-            if (InStr(systemCmdName, inputCmd)) {
-                if (systemCmdName == inputCmd)
-                    LV_Insert(1, , systemCmdName, systemCmdObj.desc)
-                else
-                    LV_Add(, systemCmdName, systemCmdObj.desc)
-            }
-        }
-    } else if (inputCmdArrayLen >= 2) {
-        inputCmdKey := inputCmdArray[1]
-        inputCmdValue := inputCmdArray[2]
-        topPid := ICBTopPNamePidMap[inputCmdKey]
+        
+    } else if (inputCmdArrayLen >=2 && RegExMatch(inputCmdP1, "^(g|get|q|do)$")) {
+        ;处理顶级命令  g baidu
+        topPid := ICBTopPNamePidMap[inputCmdP1]
         if (!topPid)
             return
         topChildCmds := ICBTopPidChildCmdMap[topPid]
         if (!topChildCmds)
             return
-        
-        inputCmdValue := inputCmdArray[2]
+        inputCmdP2 := inputCmdArray[2]
         for cmdKey, cmdId in topChildCmds {
-            if (InStr(cmdKey, inputCmdValue)) {
-                if (cmdKey == inputCmdValue)
-                    LV_Insert(1, , inputCmdKey " " cmdKey, ICBIdCmdObjMap[cmdId].name)
+            if (InStr(cmdKey, inputCmdP2)) {
+                cmdObj := ICBIdCmdObjMap[cmdId]
+                if (cmdKey == inputCmdP2)
+                    LV_Insert(1, , cmdObj.fullName, cmdObj.name)
                 else
-                    LV_Add(, inputCmdKey " " cmdKey, ICBIdCmdObjMap[cmdId].name)
+                    LV_Add(, cmdObj.fullName, cmdObj.name)
+            }
+        }
+    
+    } else if (RegExMatch(inputCmdP1, "^-")) {
+        ;处理内置命令 -theme
+        for cmdName, cmdDesc in ICBBuildInCmdMap {
+            if (InStr(cmdName, inputCmdP1)) {
+                if (cmdName == inputCmdP1)
+                    LV_Insert(1, , cmdName, cmdDesc)
+                else
+                    LV_Add(, cmdName, cmdDesc)
+            }  
+        }
+        
+    } else {
+        ;处理系统级命令 calc ddm
+        for cmdName, cmdObj in ICBSystemCmdMap {
+            if (InStr(cmdName, inputCmdP1)) {
+                if (cmdName == inputCmdP1)
+                    LV_Insert(1, , cmdName, cmdObj.desc)
+                else
+                    LV_Add(, cmdName, cmdObj.desc)
             }
         }
     }
@@ -276,6 +282,7 @@ InputCmdEditHandler(CtrlHwnd:="", GuiEvent:="", EventInfo:="") {
         Gui, InputCmdBar:Show, h270
     }
 }
+
 InputCmdLVHandler(CtrlHwnd, GuiEvent, EventInfo) {
 	if (GuiEvent == "DoubleClick") {
         InputCmdSubmitHandler(CtrlHwnd, GuiEvent, EventInfo)
@@ -535,9 +542,10 @@ ExecBuildInCmd(inputCmdKey, inputCmdValue:="", inputCmdValueExtra:="") {
     if (inputCmdKey == "-theme") {
         if (!inputCmdValue)
             return Tip("当前主题类型: " Config.themeType)
-        if (inputCmdValue == "random" || inputCmdValue == "auto" || inputCmdValue == "blur" || inputCmdValue == "custom")
+        if (RegExMatch(inputCmdValue, "^(auto|blur|custom|random)$")) {
             Config.themeType := inputCmdValue
-        
+            DBConfigThemeTypeUpdate(Config.id, inputCmdValue)
+        } 
     } else if (inputCmdKey == "-tree") {
         GuiTV()
     } else if (inputCmdKey == "-history") {
@@ -990,6 +998,10 @@ PrepareICBData() {
         } else {
             if (!cmd)
                 continue
+            topCmdObj := ICBIdCmdObjMap[topPid]
+            if (topCmdObj) {
+                cmdObj.fullName := topCmdObj.name " " cmdObj.cmd     ;存储完整命令(eg: g baidu), 加快匹配速度
+            }
             childCmds := ICBTopPidChildCmdMap[topPid]
             if (childCmds) {
                 childCmds[cmd] := id
@@ -1096,7 +1108,8 @@ InputCmdBarThemeConf(ByRef themeType, ByRef themeBgColor, ByRef themeFontColor, 
     }
     themeConf := Config["theme"][themeType]
     if (themeType == "auto") {
-        RegRead, wallpaperPath, HKEY_CURRENT_USER\Control Panel\Desktop, WallPaper
+        ;RegRead, wallpaperPath, HKEY_CURRENT_USER\Control Panel\Desktop, WallPaper
+        wallpaperPath := A_AppData "\Microsoft\Windows\Themes\TranscodedWallpaper"  ;使用SystemParametersInfo方式切换壁纸, 注册表上述地址信息不会变化; 这种方式适应性更好
         FileGetTime, wallpaperTimeStamp, %wallpaperPath%, M
         if (wallpaperPath != Config.LastWallpaperPath || wallpaperTimeStamp != Config.LastWallpaperTimeStamp) {
             wallpaperHex := ImgGetDominantColor(wallpaperPath)
@@ -1325,6 +1338,10 @@ DBConfigUpdate(configObj) {
 }
 DBConfigLastCmdUpdate(id, lastCmd) {
     affectedRows := CurrentDB.Query("update config set InputCmdLastValue = '" lastCmd "' where id = " id)
+    return affectedRows
+}
+DBConfigThemeTypeUpdate(id, themeType) {
+    affectedRows := CurrentDB.Query("update config set themeType = '" themeType "' where id = " id)
     return affectedRows
 }
 DBCmdFind() {
