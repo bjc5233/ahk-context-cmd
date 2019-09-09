@@ -236,7 +236,7 @@ InputCmdEditHandler(CtrlHwnd:="", GuiEvent:="", EventInfo:="") {
             LV_Add(, cmdObj.cmd, cmdObj.name)
         }
         
-    } else if (inputCmdArrayLen >=2 && RegExMatch(inputCmdP1, "^(g|get|q|do)$")) {
+    } else if (inputCmdArrayLen >=2 && RegExMatch(inputCmdP1, "^(g|get|q|do)$")) {      ;TODO 构建数据结构时创建此regex字符串
         ;处理顶级命令  g baidu
         topPid := ICBTopPNamePidMap[inputCmdP1]
         if (!topPid)
@@ -946,17 +946,11 @@ MenuTray() {
 }
 
 MenuTrayReload(ItemName:="", ItemPos:="", MenuName:="") {
-    Config.delete("theme")
-    DBConfigUpdate(Config)
     CurrentDB.Close()
     Reload
 }
 MenuTrayExit(ItemName:="", ItemPos:="", MenuName:="") {
-    if (!CurrentDB.IsValid()) {
-        Config.delete("theme")
-        DBConfigUpdate(Config)
-        CurrentDB.Close()
-    }
+    CurrentDB.Close()
     Gui, GuiTV:Destroy
     Gui, InputCmdBar:Destroy
     ExitApp
@@ -1108,14 +1102,14 @@ InputCmdBarThemeConf(ByRef themeType, ByRef themeBgColor, ByRef themeFontColor, 
     }
     themeConf := Config["theme"][themeType]
     if (themeType == "auto") {
-        ;RegRead, wallpaperPath, HKEY_CURRENT_USER\Control Panel\Desktop, WallPaper
-        wallpaperPath := A_AppData "\Microsoft\Windows\Themes\TranscodedWallpaper"  ;使用SystemParametersInfo方式切换壁纸, 注册表上述地址信息不会变化; 这种方式适应性更好
+        RegRead, wallpaperPath, HKEY_CURRENT_USER\Control Panel\Desktop, WallPaper
         FileGetTime, wallpaperTimeStamp, %wallpaperPath%, M
         if (wallpaperPath != Config.LastWallpaperPath || wallpaperTimeStamp != Config.LastWallpaperTimeStamp) {
             wallpaperHex := ImgGetDominantColor(wallpaperPath)
             Config.LastWallpaperPath := wallpaperPath
             Config.LastWallpaperTimeStamp := wallpaperTimeStamp
             Config.LastWallpaperColor := wallpaperHex
+            DBConfigLastWallpaperUpdate(Config.id, wallpaperHex, wallpaperPath, wallpaperTimeStamp)
             themeBgColor := wallpaperHex
         } else {
             themeBgColor := Config.LastWallpaperColor
@@ -1265,7 +1259,7 @@ FileGetDesc(lptstrFilename) {
 }
 
 ImgGetDominantColor(imgPath) {
-    rgb := StdoutToVar_CreateProcess("resources\imagemagick\imagemagick-convert.exe """ imgPath """ -scale 1x1 -format %[pixel:u] info:-")
+    rgb := StdoutToVar_CreateProcess("resources\imagemagick\imagemagick-convert.exe """ imgPath """ -scale 1x1 -format `%[pixel:u] info:-")
     rgb := StrReplace(rgb, "srgb(")
     rgb := StrReplace(rgb, ")")
     rgbArray := StrSplit(rgb, ",")
@@ -1342,6 +1336,10 @@ DBConfigLastCmdUpdate(id, lastCmd) {
 }
 DBConfigThemeTypeUpdate(id, themeType) {
     affectedRows := CurrentDB.Query("update config set themeType = '" themeType "' where id = " id)
+    return affectedRows
+}
+DBConfigLastWallpaperUpdate(id, wallpaperColor, wallpaperPath, wallpaperTimeStamp) {
+    affectedRows := CurrentDB.Query("update config set LastWallpaperColor = '" wallpaperColor "', LastWallpaperPath = '" wallpaperPath "', LastWallpaperTimeStamp = '" wallpaperTimeStamp "' where id = " id)
     return affectedRows
 }
 DBCmdFind() {
