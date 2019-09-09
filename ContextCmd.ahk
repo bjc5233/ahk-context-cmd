@@ -43,12 +43,13 @@
 ;       [hit 命令命中次数]
 ;       [pid 父级命令编号]
 ;       [topPid 顶级命令编号<g get do q>]
-;    3.systemCmd表 
+;    3.systemCmd表
 ;       [name 系统命令文件名<无扩展名>]
 ;       [desc 系统命令文件描述]
+;       [ext  系统命令文件扩展名]
 ;       [hit 命令命中次数]
 ;       [show 是否展示在搜索候选栏中<对于完全不会用到的命令设值0>]
-;       TODO 是否需要加入文件全路径
+;       [path 文件完整路径]
 ;    3.historyCmd表 
 ;       [name 名称]
 ;       [cmd 命令名]
@@ -77,24 +78,31 @@ global Config := Object()
 global ConfigExecLangPathBase := A_ScriptDir "\cache"
 
 ;命令树变量 TV => TreeView
-global TVIdCmdObjMap := Object()
-global TVPidChildIdsMap := Object()
-global TVBranchIdIdMap := Object()
-global TVIdBranchIdMap := Object()
+global TVIdCmdObjMap := Object()            ;Map<cmdId, cmdObj>
+global TVPidChildIdsMap := Object()         ;Map<Pid, List<childIds>>
+global TVBranchIdIdMap := Object()          ;Map<branchId, cmdId>
+global TVIdBranchIdMap := Object()          ;Map<cmdId, branchId>
 global TVCmdCount := 0
 
 ;命令输入框变量 ICB => InputCmdBar
-global ICBIdCmdObjMap := Object()
-global ICBTopPNamePidMap := Object()
-global ICBTopPidChildCmdMap := Object()
-global ICBHistoryCmds := Object()
+global ICBIdCmdObjMap := Object()           ;Map<cmdId, cmdObj>
+global ICBTopPNamePidMap := Object()        ;Map<topCmdName, cmdId>     eg:<do, 316>
+global ICBTopPidChildCmdMap := Object()     ;Map<topCmdId, List<childCmdName, childCmdId>>
+global ICBHistoryCmds := Object()           ;List<historyCmdObj>
 global ICBCmdHitCount := 0
 global ICBCmdHitThreshold := 5
-global ICBSystemPaths := [{"path": "C:\WINDOWS\System32\*.exe", "type": "system"}, {"path": "C:\WINDOWS\*.exe", "type": "system"}, {"path": "C:\path\*", "type": "custom"}, {"path": "C:\path\bat\*", "type": "custom"}]
-global ICBSystemCmdMap := new OrderedArray()
+global ICBSystemPaths := 
+(Ltrim Join
+    [{"path": "C:\WINDOWS\System32\*.exe", "prefix": " sys-"}, 
+     {"path": "C:\WINDOWS\*.exe", "prefix": " sys-"}, 
+     {"path": "C:\path\*", "prefix": "path-"}, 
+     {"path": "C:\path\bat\*", "prefix": " bat-"}, 
+     {"path": "C:\path\AHK\*.ahk", "prefix": " ahk-"}]
+)
+global ICBSystemCmdMap := new OrderedArray()    ;Map<cmdName, cmdObj>
 global ICBSystemCmdHitCount := 0
 global ICBSystemCmdHitThreshold := 5
-global ICBBuildInCmdMap := new OrderedArray()
+global ICBBuildInCmdMap := new OrderedArray()   ;Map<cmdName, cmdDesc>
 global englishKeyboard := DllCall("LoadKeyboardLayout", "Str", "00000409", "Int", 1)
 
 
@@ -516,8 +524,12 @@ ExecNativeCmd(inputCmdKey, inputCmdValue:="", inputCmdValueExtra:="") {
     if (StrLen(inputCmdValueExtra))
         inputCmd .= " " inputCmdValueExtra
     run, %inputCmd%,, UseErrorLevel
+    systemCmdObj := ICBSystemCmdMap[inputCmdKey]
     if (ErrorLevel == "ERROR") {
-        inputCmd := inputCmdKey ".bat " inputCmdValue " " inputCmdValueExtra
+        if (systemCmdObj)
+            inputCmd := systemCmdObj.path " " inputCmdValue " " inputCmdValueExtra
+        else
+            inputCmd := inputCmdKey ".bat " inputCmdValue " " inputCmdValueExtra
         run, %inputCmd%,, UseErrorLevel
         if (ErrorLevel == "ERROR")
             return TryExecMatchedCmdWhenMissing("找不到指定的命令!")
@@ -525,7 +537,6 @@ ExecNativeCmd(inputCmdKey, inputCmdValue:="", inputCmdValueExtra:="") {
     
     newHistoryCmdObj := Object()
     newHistoryCmdObj.cmd := inputCmd
-    systemCmdObj := ICBSystemCmdMap[inputCmdKey]
     if (systemCmdObj) {
         newHistoryCmdObj.name := systemCmdObj.desc
         ICBSystemCmdHitCount += 1
@@ -946,11 +957,13 @@ MenuTray() {
 }
 
 MenuTrayReload(ItemName:="", ItemPos:="", MenuName:="") {
-    CurrentDB.Close()
+    if (CurrentDB)
+        CurrentDB.Close()
     Reload
 }
 MenuTrayExit(ItemName:="", ItemPos:="", MenuName:="") {
-    CurrentDB.Close()
+    if (CurrentDB)
+        CurrentDB.Close()
     Gui, GuiTV:Destroy
     Gui, InputCmdBar:Destroy
     ExitApp
@@ -1138,13 +1151,14 @@ InputCmdBarThemeConf(ByRef themeType, ByRef themeBgColor, ByRef themeFontColor, 
 ;遍历DB对象，查看是否不再文件对象中 ----- 是则删除该命令记录
 PrepareSystemCmdData() {
     print("PrepareSystemCmdData start...")
-    systemCmdFileMap := Object()
-    systemCmdDBMap := Object()
+    systemCmdFileMap := Object()    ;Map<fileName, fileObj>
+    systemCmdDBMap := Object()      ;Map<cmdName, cmdObj>
+    ICBSystemCmdHitThreshold := 0
     
     ;从文件构建systemCmdFileMap对象
     FileEncoding
     for index, systemPath in ICBSystemPaths {
-        fileDescPrefix := (systemPath.type == "system" ? "*" : " ")
+        fileDescPrefix := systemPath.prefix
         Loop, Files, % systemPath.path, F
         {
             filePath := fileName := fileExt := fileDesc := fileContent := ""
@@ -1156,7 +1170,12 @@ PrepareSystemCmdData() {
                 if (!filePath || !FileExist(filePath)) {    ;有些快捷方式是网络路径\不存在源文件(run.lnk) -> 不做处理
                     if (!fileDesc)
                         fileDesc := fileName
-                    systemCmdFileMap[fileName] := fileDescPrefix fileDesc
+                    newFileCmdObj := Object()
+                    newFileCmdObj.name := fileName
+                    newFileCmdObj.desc := fileDescPrefix fileDesc
+                    newFileCmdObj.ext := "lnk"
+                    newFileCmdObj.path := A_LoopFileFullPath
+                    systemCmdFileMap[fileName] := newFileCmdObj
                     continue
                 }
             } else {
@@ -1179,45 +1198,53 @@ PrepareSystemCmdData() {
                     continue
                 }
             }
-            systemCmdFileMap[fileName] := fileDescPrefix fileDesc
+            newFileCmdObj := Object()
+            newFileCmdObj.name := fileName
+            newFileCmdObj.desc := fileDescPrefix fileDesc
+            newFileCmdObj.ext := fileExt
+            newFileCmdObj.path := A_LoopFileFullPath
+            systemCmdFileMap[fileName] := newFileCmdObj
         }
     }
     ;从DB构建systemCmdDBMap对象
     systemCmds := DBSystemCmdFind()
-    for index, systemCmdObj in systemCmds {
-        systemCmdDBMap[systemCmdObj.name] := systemCmdObj
+    for index, dbCmdObj in systemCmds {
+        systemCmdDBMap[dbCmdObj.name] := dbCmdObj
     }
     ;以ICBSystemCmdFileMap为基准, 不存在ICBSystemCmdDBMap中则添加记录
-    for fileName, fileDesc in systemCmdFileMap {
-        dbSystemCmdObj := systemCmdDBMap[fileName]
-        if (!dbSystemCmdObj) {
-            newSystemCmdObj := Object()
-            newSystemCmdObj.name := fileName
-            newSystemCmdObj.desc := fileDesc
-            newSystemCmdObj.hit := 0
-            DBSystemCmdNew(newSystemCmdObj)
+    for fileName, fileCmdObj in systemCmdFileMap {
+        dbCmdObj := systemCmdDBMap[fileName]
+        if (!dbCmdObj) {
+            newDBCmdObj := Object()
+            newDBCmdObj.name := fileName
+            newDBCmdObj.desc := fileCmdObj.desc
+            newDBCmdObj.ext := fileCmdObj.ext
+            newDBCmdObj.hit := 0
+            newDBCmdObj.path := fileCmdObj.path
+            DBSystemCmdNew(newDBCmdObj)
             continue
         }
-        if (dbSystemCmdObj.desc != fileDesc) {
-            newSystemCmdObj := Object()
-            newSystemCmdObj.desc := fileDesc
-            DBSystemCmdUpdate(newSystemCmdObj)
+        ;TODO 检测其他信息是否变更
+        if (dbCmdObj.desc != fileCmdObj.desc) {
+            newDBCmdObj := Object()
+            newDBCmdObj.desc := fileCmdObj.desc
+            DBSystemCmdUpdate(newDBCmdObj)
             continue
         }
     }
     ;以systemCmdDBMap为基准, 不存在systemCmdFileMap中则添加记录
     systemCmdDelIds := Object()
-    for dbFileName, dbSystemCmdObj in systemCmdDBMap {
-        fileDesc := systemCmdFileMap[dbFileName]
-        if (!fileDesc)
-            systemCmdDelIds.push(dbSystemCmdObj.id)
+    for cmdName, dbCmdObj in systemCmdDBMap {
+        fileCmdObj := systemCmdFileMap[cmdName]
+        if (!fileCmdObj)
+            systemCmdDelIds.push(dbCmdObj.id)
     }
     DBSystemCmdDel(systemCmdDelIds)
     ;重新读取DB构建数据
     ICBSystemCmdMap := new OrderedArray()
     systemCmds := DBSystemCmdFind2()
-    for index, systemCmdObj in systemCmds {
-        ICBSystemCmdMap[systemCmdObj.name] := systemCmdObj
+    for index, dbCmdObj in systemCmds {
+        ICBSystemCmdMap[dbCmdObj.name] := dbCmdObj
     }
     print("PrepareSystemCmdData finish...")
 }
@@ -1391,10 +1418,10 @@ DBCodeDel(cmdIds) {
     affectedRows := CurrentDB.Query("delete from cmd where id in (" cmdIdsStr ")")
 }
 DBSystemCmdFind() {
-    return Query("select id, name, desc from systemCmd order by hit DESC")
+    return Query("select id, name, desc, ext, path from systemCmd order by hit DESC")
 }
 DBSystemCmdFind2() {
-    return Query("select id, name, desc from systemCmd where show = 1 order by hit DESC")
+    return Query("select id, name, desc, ext, path from systemCmd where show = 1 order by hit DESC")
 }
 DBSystemCmdNew(systemCmdObj) {
     resultSet := QueryOne("select ifnull(max(id) + 1, 1) as systemCmdId from systemCmd")
