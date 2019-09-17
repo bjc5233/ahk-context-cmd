@@ -71,6 +71,7 @@ CoordMode, Menu
 #Include <CuteWord>
 #Include <OrderedArray>
 #Include <DBA>
+#include <AHKhttp>
 
 ;========================= 初始化 =========================
 global CurrentDB := Object()
@@ -104,6 +105,7 @@ global ICBSystemCmdHitCount := 0
 global ICBSystemCmdHitThreshold := 5
 global ICBBuildInCmdMap := new OrderedArray()   ;Map<cmdName, cmdDesc>
 global englishKeyboard := DllCall("LoadKeyboardLayout", "Str", "00000409", "Int", 1)
+global enableWebServer := true
 
 
 printClear()
@@ -113,9 +115,9 @@ DBConnect()
 PrepareConfigData()
 PrepareICBData()
 PrepareSystemCmdData()
+PrepareWebServer()
 print("ContextCmd is working")
 ;========================= 初始化 =========================
-
 
 
 ;========================= 配置热键 =========================
@@ -138,14 +140,12 @@ HotKeyConfWave() {
     if (!inputCmd || !RegExMatch(ErrorLevel, "^EndKey") || InStr(inputCmd, "`n", true))
         return
     InputCmdMode := "hotkey"
-    InputCmdExec(inputCmd)
     InputCmdLastValue := inputCmd
     Config.InputCmdLastValue := inputCmd
     DBConfigLastCmdUpdate(Config.id, inputCmd)
+    InputCmdExec(inputCmd)
 }
 ;========================= 配置热键 =========================
-
-
 
 
 
@@ -214,11 +214,11 @@ InputCmdSubmitHandler(CtrlHwnd, GuiEvent, EventInfo) {
         LV_GetText(inputCmd, rowNum, 1)
     }
     Gui, InputCmdBar:Hide
-    InputCmdExec(inputCmd)
     InputCmdBarExist := false
     InputCmdLastValue := inputCmd
     Config.InputCmdLastValue := inputCmd
     DBConfigLastCmdUpdate(Config.id, inputCmd)
+    InputCmdExec(inputCmd)
 }
 
 InputCmdBarGuiEscape:
@@ -580,11 +580,11 @@ TryExecMatchedCmdWhenMissing(msg) {
     if (LV_GetCount()) {
         LV_GetText(inputCmd, 1, 1)
         LV_Delete()        ;删除InputCmdLV中全部行, 防止递归调用
-        InputCmdExec(inputCmd)
         InputCmdBarExist := false
         InputCmdLastValue := inputCmd
         Config.InputCmdLastValue := inputCmd
         DBConfigLastCmdUpdate(Config.id, inputCmd)
+        InputCmdExec(inputCmd)
     } else {
         Tip(msg)
     }
@@ -1153,7 +1153,7 @@ PrepareSystemCmdData() {
     print("PrepareSystemCmdData start...")
     systemCmdFileMap := Object()    ;Map<fileName, fileObj>
     systemCmdDBMap := Object()      ;Map<cmdName, cmdObj>
-    ICBSystemCmdHitThreshold := 0
+    ICBSystemCmdHitCount := 0
     
     ;从文件构建systemCmdFileMap对象
     FileEncoding
@@ -1287,6 +1287,7 @@ FileGetDesc(lptstrFilename) {
 
 ImgGetDominantColor(imgPath) {
     rgb := StdoutToVar_CreateProcess("resources\imagemagick\imagemagick-convert.exe """ imgPath """ -scale 1x1 -format `%[pixel:u] info:-")
+    print("---:" rgb "|" imgPath)
     rgb := StrReplace(rgb, "srgb(")
     rgb := StrReplace(rgb, ")")
     rgbArray := StrSplit(rgb, ",")
@@ -1346,7 +1347,92 @@ OpenRunDialog() {
     runPath:=A_AppData . "\Microsoft\Windows\Start Menu\Programs\System Tools\run.lnk"
     run, %runPath%
 }
+
+
+PrepareWebServer(){
+    if(!enableWebServer)
+        return
+    print("PrepareWebServer start...")
+    global httpPaths := {}
+    httpPaths["/"] := Func("Http404")
+    httpPaths["404"] := Func("Http404")
+    httpPaths["/contextCmd"] := Func("HttpContextCmd")
+
+    global webServer := new NewHttpServer()
+    webServer.LoadMimes(A_ScriptDir . "/resources/mime.types")
+    webServer.SetPaths(httpPaths)
+    webServer.Serve(9998)
+    print("PrepareWebServer finish...")
+}
+Http404(ByRef req, ByRef res) {
+    res.SetBodyText("404: use /contextCmd?cmd=calc")
+    res.status := 404
+}
+HttpContextCmd(ByRef req, ByRef res) {
+    ;优先解析url中的参数, 如果不存在再尝试解析body中的参数
+    inputCmd := req.queries.cmd
+    if (!StrLen(inputCmd))
+        inputCmd := req.body
+    if (!StrLen(inputCmd))
+        return
+    
+    print("HttpContextCmd:" inputCmd)
+    InputCmdMode := "http"
+    InputCmdLastValue := inputCmd
+    Config.InputCmdLastValue := inputCmd
+    DBConfigLastCmdUpdate(Config.id, inputCmd)
+    InputCmdExec(inputCmd)
+    res.status := 200
+}
 ;========================= 公共函数 =========================
+
+
+;========================= 类重写 =========================
+class NewHttpServer extends HttpServer {
+    LoadMimes(file) {
+        if (!FileExist(file))
+            return false
+
+        FileRead, data, % file
+        types := StrSplit(data, "`r`n")
+        this.mimes := {}
+        for i, data in types {
+            info := StrSplit(data, " ")
+            type := info.Remove(1)
+            ; Seperates type of content and file types
+            info := StrSplit(LTrim(SubStr(data, StrLen(type) + 1)), " ")
+
+            for i, ext in info {
+                this.mimes[ext] := type
+            }
+        }
+        return true
+    }
+    ServeFile(ByRef response, file) {
+        f := FileOpen(file, "r")
+        length := f.RawRead(data, f.Length)
+        f.Close()
+
+        response.SetBody(data, length)
+        response.headers["Content-Type"] := this.GetMimeType(file)
+    }
+    AddHeader(ByRef response, headKey, headValue) {
+        response.headers[headKey] := headValue
+    }
+}
+;========================= 类重写 =========================
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 ;========================= DB-DAO =========================

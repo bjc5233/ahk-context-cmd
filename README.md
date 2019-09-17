@@ -6,7 +6,8 @@
 1. 鼠标中键唤出输入框，输入命令
 2. 双击右侧Ctrl唤出输入框，输入命令
 3. 监听``之间输入的命令
-4. 自定义命令: 图标右键->修改菜单-> 新增\编辑\删除\保存命令树
+4. 通过http请求，(http://PCIP:9998/contextCmd?cmd=notepad)[http://127.0.0.1:9998/contextCmd?cmd=notepad]
+5. 自定义命令: 图标右键->修改菜单-> 新增\编辑\删除\保存命令树
 
 
 ### 特点
@@ -58,17 +59,24 @@
 1. 对第二层级命令进行提示[g ziliao mobile]中的mobile
 2. 每周五展示历史输入命令排行榜[前二十]；创建内部指令统计当前命令hitting次数排行榜
 3. 新增命令属性[窗口类型], 取值[min max normal hide], 默认值为normal; 此时修改删除临时变量execWinMode
-4. 新顶级命令 => c 代码片段读取    参考项目[ahk-context-code](https://github.com/bjc5233/ahk-context-code)      需要支持第二层级命令提示
-5. 脚本在启动时会将系统path目录中的所有命令及其注释保存到DB，但命令可能会被修改(如bat标题、lnk备注信息)。因此需要DB记录命令的修改时间，脚本启动后检查命令时间是否有变化，有则更新
-6. 提升命令匹配速度
+4. 增加配置输入框: 执行语言[execLang= bat ahk vbs java]
+5. 新顶级命令 => c 代码片段读取    参考项目[ahk-context-code](https://github.com/bjc5233/ahk-context-code)      需要支持第二层级命令提示
+6. 脚本在启动时会将系统path目录中的所有命令及其注释保存到DB，但命令可能会被修改(如bat标题、lnk备注信息)。因此需要DB记录命令的修改时间，脚本启动后检查命令时间是否有变化，有则更新
+7. 提升命令匹配速度
+8. visor绘制流程图
+9. DB表结构变更: 
+```
+cmd.cmd->cmd.name; cmd.name->cmd.desc
+historyCmd.cmd->historyCmd.name; historyCmd.name->historyCmd.desc
+```
 
 
 
 ### 其他
 1. 项目整合替代了[g.bat](https://github.com/bjc5233/batch-shortcut-go)、[get.bat](https://github.com/bjc5233/batch-shortcut-get)、[q.bat](https://github.com/bjc5233/batch-shortcut-qq)、do.bat
-2. 项目自带数据库ContextCmd.db，是本人日常生活中所使用的(没有敏感命令)
+2. 项目自带数据库ContextCmd.db，是本人日常生活中所使用的(无敏感命令)
 3. 项目自带事例命令中有使用bat脚本, 其中少量会需要第三方exe文件
-4. 当命令命中次数到达阀值[ICBCmdHitThreshold\ICBSystemCmdHitThreshold], 将重新构建ICB变量, 使得命中次数多的命令可以在匹配结果中更加靠前
+4. 当命令命中次数到达阀值[ICBCmdHitThreshold\ICBSystemCmdHitThreshold], 将会重新构建ICB变量, 使得命中次数多的命令可以在匹配结果中更靠前
 5. 在配置命令的[执行]文本框中, 首行可配置信息:
 ``` 
 ::execLang=bat execWinMode=hide
@@ -76,9 +84,4 @@ bat注释  将脚本保存为.bat文件  脚本执行时隐藏窗口
 
 ;execLang=ahk
 ahk注释  将脚本保存为.ahk文件
-```
-6. DB表结构变更: 
-```
-cmd.cmd->cmd.name; cmd.name->cmd.desc
-historyCmd.cmd->historyCmd.name; historyCmd.name->historyCmd.desc
 ```
