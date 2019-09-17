@@ -1373,9 +1373,11 @@ HttpContextCmd(ByRef req, ByRef res) {
     inputCmd := req.queries.cmd
     if (!StrLen(inputCmd))
         inputCmd := req.body
-    if (!StrLen(inputCmd))
+    if (!StrLen(inputCmd)) {
+        res.SetBodyText("contextCmd: cmd cannot be empty!")
+        res.status := 404
         return
-    
+    }
     print("HttpContextCmd:" inputCmd)
     InputCmdMode := "http"
     InputCmdLastValue := inputCmd

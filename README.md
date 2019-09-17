@@ -6,7 +6,7 @@
 1. 鼠标中键唤出输入框，输入命令
 2. 双击右侧Ctrl唤出输入框，输入命令
 3. 监听``之间输入的命令
-4. 通过http请求，(http://PCIP:9998/contextCmd?cmd=notepad)[http://127.0.0.1:9998/contextCmd?cmd=notepad]
+4. 通过http请求，[http://127.0.0.1:9998/contextCmd?cmd=notepad](http://127.0.0.1:9998/contextCmd?cmd=notepad)
 5. 自定义命令: 图标右键->修改菜单-> 新增\编辑\删除\保存命令树
 
 
