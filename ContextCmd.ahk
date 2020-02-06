@@ -1182,17 +1182,17 @@ PrepareSystemCmdData() {
                 filePath := A_LoopFileFullPath
                 fileExt := A_LoopFileExt
             }
-            
+
             if (!fileDesc) {
                 SplitPath, filePath,,, fileExt
-                if (fileExt == "exe") {
+                if (RegExMatch(fileExt, "i)^exe$")) {
                     if (!fileDesc)
                         fileDesc := FileGetDesc(filePath)
-                } else if (fileExt == "bat") {
+                } else if (RegExMatch(fileExt, "i)^bat$")) {
                     FileRead, fileContent, %filePath%
                     RegExMatch(fileContent, "U)title\s.*\s", fileDesc)
                     fileDesc := StrReplace(StrReplace(StrReplace(fileDesc, "title "), "&"), "`r")
-                } else if (fileExt == "vbs" || fileExt == "swf" || fileExt == "ahk") {
+                } else if (fileExt == "vbs" || fileExt == "swf" || fileExt == "ahk" || fileExt == "AHK") {
                     fileDesc := fileName
                 } else {
                     continue
@@ -1286,7 +1286,8 @@ FileGetDesc(lptstrFilename) {
 }
 
 ImgGetDominantColor(imgPath) {
-    rgb := StdoutToVar_CreateProcess("resources\imagemagick\imagemagick-convert.exe """ imgPath """ -scale 1x1 -format `%[pixel:u] info:-")
+    ;TODO 有时候执行没有返回值rgb
+    rgb := StdoutToVar("resources\imagemagick\imagemagick-convert.exe """ imgPath """ -scale 1x1 -format `%[pixel:u] info:-")
     print("---:" rgb "|" imgPath)
     rgb := StrReplace(rgb, "srgb(")
     rgb := StrReplace(rgb, ")")
@@ -1295,6 +1296,17 @@ ImgGetDominantColor(imgPath) {
 }
 Rgb2Hex(rgbArray) {
     return Format("{:X}", rgbArray[1]) Format("{:X}", rgbArray[2]) Format("{:X}", rgbArray[3])
+}
+StdoutToVar(cmdStr) {
+    print(cmdStr)
+    ;wait to del StdoutToVar_CreateProcess method
+    Run %ComSpec%,, Hide, pid
+    WinWait ahk_pid %pid%
+    DllCall("AttachConsole", "UInt", pid)
+    output := ComObjCreate("Wscript.Shell").Exec(cmdStr).StdOut.ReadAll()
+    DllCall("FreeConsole")
+    Process Close, %pid%
+    return output
 }
 StdoutToVar_CreateProcess(sCmd, sEncoding:="CP0", sDir:="", ByRef nExitCode:=0) {
     DllCall( "CreatePipe",           PtrP,hStdOutRd, PtrP,hStdOutWr, Ptr,0, UInt,0 )
