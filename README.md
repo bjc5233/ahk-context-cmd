@@ -69,7 +69,7 @@
 cmd.cmd->cmd.name; cmd.name->cmd.desc
 historyCmd.cmd->historyCmd.name; historyCmd.name->historyCmd.desc
 ```
-
+10. 命令编辑界面增加[hit次数]
 
 
 ### 其他

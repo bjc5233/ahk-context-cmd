@@ -559,6 +559,8 @@ ExecBuildInCmd(inputCmdKey, inputCmdValue:="", inputCmdValueExtra:="") {
         } 
     } else if (inputCmdKey == "-tree") {
         GuiTV()
+    }  else if (inputCmdKey == "-gui") {
+        GuiTV()
     } else if (inputCmdKey == "-history") {
         TryExecMatchedCmdWhenMissing("历史记录不存在!")
     } else if (inputCmdKey == "-clearCache") {
@@ -1117,7 +1119,7 @@ InputCmdBarThemeConf(ByRef themeType, ByRef themeBgColor, ByRef themeFontColor, 
     if (themeType == "auto") {
         RegRead, wallpaperPath, HKEY_CURRENT_USER\Control Panel\Desktop, WallPaper
         FileGetTime, wallpaperTimeStamp, %wallpaperPath%, M
-        if (wallpaperPath != Config.LastWallpaperPath || wallpaperTimeStamp != Config.LastWallpaperTimeStamp) {
+        if (FileExist(wallpaperPath) && ( wallpaperPath != Config.LastWallpaperPath || wallpaperTimeStamp != Config.LastWallpaperTimeStamp)) {
             wallpaperHex := ImgGetDominantColor(wallpaperPath)
             Config.LastWallpaperPath := wallpaperPath
             Config.LastWallpaperTimeStamp := wallpaperTimeStamp
@@ -1192,7 +1194,7 @@ PrepareSystemCmdData() {
                     FileRead, fileContent, %filePath%
                     RegExMatch(fileContent, "U)title\s.*\s", fileDesc)
                     fileDesc := StrReplace(StrReplace(StrReplace(fileDesc, "title "), "&"), "`r")
-                } else if (fileExt == "vbs" || fileExt == "swf" || fileExt == "ahk" || fileExt == "AHK") {
+                } else if (fileExt == "vbs" || fileExt == "swf" || fileExt == "ahk" || fileExt == "AHK" || fileExt == "py") {
                     fileDesc := fileName
                 } else {
                     continue
@@ -1286,14 +1288,13 @@ FileGetDesc(lptstrFilename) {
 }
 
 ImgGetDominantColor(imgPath) {
-    ;TODO 有时候执行没有返回值rgb
-    rgb := StdoutToVar("resources\imagemagick\imagemagick-convert.exe """ imgPath """ -scale 1x1 -format `%[pixel:u] info:-")
-    print("---:" rgb "|" imgPath)
+    rgb := StdoutToVar(A_ScriptDir "\resources\imagemagick\imagemagick-convert.exe """ imgPath """ -scale 1x1 -format `%[pixel:u] info:-")
     rgb := StrReplace(rgb, "srgb(")
     rgb := StrReplace(rgb, ")")
     rgbArray := StrSplit(rgb, ",")
     return Rgb2Hex(rgbArray)
 }
+
 Rgb2Hex(rgbArray) {
     return Format("{:X}", rgbArray[1]) Format("{:X}", rgbArray[2]) Format("{:X}", rgbArray[3])
 }
